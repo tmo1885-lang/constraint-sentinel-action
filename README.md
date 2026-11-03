@@ -90,13 +90,13 @@ jobs:
         with:
           fetch-depth: 0
       - name: Check approved task scope
-        uses: tmo1885-lang/constraint-sentinel-action@v0.1.0b1
+        uses: tmo1885-lang/constraint-sentinel-action@660a778e319c0c1b5aae43924a6fac155d029184
         with:
           base: ${{ github.event.pull_request.base.sha }}
           audit-ignored-protected: "true"
 ~~~
 
-**Security note:** The example uses the versioned beta tag for readability. For stronger supply-chain control, replace `v0.1.0b1` with the exact reviewed **40-character commit SHA** from the release. Do not use a moving branch as a production trust anchor.
+**Security note:** The example pins the published, tested beta code to its exact **40-character Git commit SHA**. Once the `v0.1.0b1` release tag is available, you may use that shorter tag for convenience, but immutable SHA pinning is preferable for supply-chain control. Do not use a moving branch as a production trust anchor.
 
 The checker must be installed from an **owner-trusted source**. A passing GitHub Action is useful only when repository administrators make it a required status check and protect the trusted baseline and task contract from the coding agent.
 
