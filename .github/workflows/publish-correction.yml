@@ -1,0 +1,37 @@
+name: Publish verified launcher correction
+on:
+  push:
+    branches: [release/publish-verified-0.1.0b2]
+permissions:
+  contents: write
+jobs:
+  publish:
+    if: github.repository == 'tmo1885-lang/constraint-sentinel-action'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish reviewed beta and annotate prior release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: tmo1885-lang/constraint-sentinel-action
+          TARGET: 2be6cc5af1efa8bca51138a6eadfb3e5e674f8ab
+        run: |
+          set -euo pipefail
+          test "$(gh api repos/$GH_REPO/git/commits/$TARGET --jq .tree.sha)" = 8a16265ec83b0366554f59d0809e61a2e915f040
+          test "$(gh api repos/$GH_REPO/actions/runs/41666017464 --jq '.conclusion + "/" + .head_sha')" = success/84f263b30a802e465d4c471715c476975e23e362
+          cat > "$RUNNER_TEMP/new.md" <<'EOF'
+          Experimental Git worktree checker for preapproved task contracts. This release corrects the v0.1.0b1 Action launcher's false pass when a candidate checkout shadows the checker module. The launcher isolates Python startup and loads the checker from the trusted Action source.
+
+          Immutable Action pin: `2be6cc5af1efa8bca51138a6eadfb3e5e674f8ab`.
+
+          The [hosted PR regression](https://github.com/tmo1885-lang/constraint-sentinel-action/actions/runs/41666017464) confirmed that the trusted checker rejected the protected payment edit with exit code 1 while a shadow module was present. The three Python test jobs passed. The separately reported Windows rename issue is outside this correction.
+          EOF
+          if ! gh release view v0.1.0b2 >/dev/null 2>&1; then
+            gh release create v0.1.0b2 --target "$TARGET" --prerelease --title 'Constraint Sentinel v0.1.0b2 — Experimental launcher correction' --notes-file "$RUNNER_TEMP/new.md"
+          fi
+          test "$(gh api repos/$GH_REPO/commits/v0.1.0b2 --jq .sha)" = "$TARGET"
+          gh release view v0.1.0b1 --json body --jq .body > "$RUNNER_TEMP/old.md"
+          if ! grep -Fq 'Action launcher warning' "$RUNNER_TEMP/old.md"; then
+            { echo '**Action launcher warning.** This beta and its earlier quick-start pin can return success without running the trusted verifier. Retire these pins as merge gates. See [v0.1.0b2](https://github.com/tmo1885-lang/constraint-sentinel-action/releases/tag/v0.1.0b2).'; echo; cat "$RUNNER_TEMP/old.md"; } > "$RUNNER_TEMP/notice.md"
+            gh release edit v0.1.0b1 --notes-file "$RUNNER_TEMP/notice.md"
+          fi
