@@ -38,7 +38,6 @@ runs:
         SENTINEL_AUDIT_IGNORED: ${{ inputs.audit-ignored-protected }}
       run: |
         set -euo pipefail
-        export PYTHONPATH="${SENTINEL_ACTION_PATH}/src"
         args=(check --repo "$SENTINEL_REPO" --base "$SENTINEL_BASE" --contract "$SENTINEL_CONTRACT")
         if [[ "$SENTINEL_RUN_CHECKS" == "true" ]]; then
           args+=(--run-checks)
@@ -52,5 +51,5 @@ runs:
           echo "Invalid audit-ignored-protected value: expected true or false" >&2
           exit 2
         fi
-        python3 -m constraint_sentinel "${args[@]}"
+        python3 -I -S "$SENTINEL_ACTION_PATH/scripts/run_action.py" "${args[@]}"
         # A pass is only a scoped Git change check, not runtime enforcement.
