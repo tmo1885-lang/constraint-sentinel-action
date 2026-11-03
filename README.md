@@ -2,7 +2,7 @@
 
 **Experimental Git worktree checker for preapproved task contracts.**
 
-**Release notice.** The v0.1.0b1 Action can return success without running the trusted checker when Python imports a same-named module from the candidate checkout. Retire v0.1.0b1 and the earlier `660a778` Action pin as merge gates. The v0.1.0b2 launcher isolates Python startup.
+**Release notice.** The v0.1.0b1 Action can return success without running the trusted checker when Python imports a same-named module from the candidate checkout. Retire v0.1.0b1 and the earlier `660a778` Action pin as merge gates. The v0.1.0b2 launcher isolates Python startup. **v0.1.0b3** retains that isolation and adds narrowly scoped Windows CRLF test-move recovery; it is still experimental.
 
 [![Status: experimental beta](https://img.shields.io/badge/status-experimental%20beta-334155)](docs/VALIDATION_STATUS.md)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-334155)](pyproject.toml)
@@ -49,7 +49,7 @@ Example: a coding agent is assigned to update checkout calculations and tests, b
 - Git additions, modifications, deletions, and renames, including nonignored untracked files.
 - Approved allow/protect patterns; protection takes precedence.
 - Attempts to change task contracts or CI workflows.
-- Test-file deletion and uniquely attributable exact-content unstaged test renames.
+- Test-file deletion and uniquely attributable exact-content unstaged test renames, plus separately reported CRLF checkout-equivalent moves when supported by pinned Git configuration/attributes.
 - Git index flags that can conceal local changes.
 - **Optional** inventory of ignored untracked protected paths.
 - **Optional** baseline-approved test commands and structured test-integrity reports.
@@ -92,13 +92,13 @@ jobs:
         with:
           fetch-depth: 0
       - name: Check approved task scope
-        uses: tmo1885-lang/constraint-sentinel-action@v0.1.0b2
+        uses: tmo1885-lang/constraint-sentinel-action@v0.1.0b3
         with:
           base: ${{ github.event.pull_request.base.sha }}
           audit-ignored-protected: "true"
 ~~~
 
-For an immutable pin, use the full commit SHA recorded on the v0.1.0b2 release.
+For an immutable pin, use the full commit SHA recorded on the v0.1.0b3 release.
 
 The checker must be installed from an **owner-trusted source**. A passing GitHub Action is useful only when repository administrators make it a required status check and protect the trusted baseline and task contract from the coding agent.
 
