@@ -1,0 +1,56 @@
+name: "Constraint Sentinel Task Scope Beta"
+author: "Velorin Intelligence"
+description: "Experimental post-change Git scope check against an approved baseline policy"
+branding:
+  icon: "shield"
+  color: "gray-dark"
+inputs:
+  base:
+    description: "Trusted baseline commit SHA; do not take this from untrusted input"
+    required: true
+  repository-path:
+    description: "Path to checked-out candidate Git repository"
+    required: false
+    default: "."
+  contract:
+    description: "Root-relative policy path committed at the trusted baseline"
+    required: false
+    default: ".sentinel/contract.json"
+  run-checks:
+    description: "Run required test commands in the checked-out worktree (requires isolation)"
+    required: false
+    default: "false"
+  audit-ignored-protected:
+    description: "Opt in to scanning Git-ignored untracked protected paths; may be expensive"
+    required: false
+    default: "false"
+runs:
+  using: "composite"
+  steps:
+    - name: Verify task boundaries
+      shell: bash
+      env:
+        SENTINEL_ACTION_PATH: ${{ github.action_path }}
+        SENTINEL_BASE: ${{ inputs.base }}
+        SENTINEL_REPO: ${{ inputs.repository-path }}
+        SENTINEL_CONTRACT: ${{ inputs.contract }}
+        SENTINEL_RUN_CHECKS: ${{ inputs.run-checks }}
+        SENTINEL_AUDIT_IGNORED: ${{ inputs.audit-ignored-protected }}
+      run: |
+        set -euo pipefail
+        export PYTHONPATH="${SENTINEL_ACTION_PATH}/src"
+        args=(check --repo "$SENTINEL_REPO" --base "$SENTINEL_BASE" --contract "$SENTINEL_CONTRACT")
+        if [[ "$SENTINEL_RUN_CHECKS" == "true" ]]; then
+          args+=(--run-checks)
+        elif [[ "$SENTINEL_RUN_CHECKS" != "false" ]]; then
+          echo "Invalid run-checks value: expected true or false" >&2
+          exit 2
+        fi
+        if [[ "$SENTINEL_AUDIT_IGNORED" == "true" ]]; then
+          args+=(--audit-ignored-protected)
+        elif [[ "$SENTINEL_AUDIT_IGNORED" != "false" ]]; then
+          echo "Invalid audit-ignored-protected value: expected true or false" >&2
+          exit 2
+        fi
+        python3 -m constraint_sentinel "${args[@]}"
+        # A pass is only a scoped Git change check, not runtime enforcement.

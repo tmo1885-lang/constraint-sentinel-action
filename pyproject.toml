@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=65", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "constraint-sentinel"
+version = "0.1.0b1"
+description = "Independent post-change task-scope verification for AI-assisted software development"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{name = "Velorin Intelligence"}]
+keywords = ["ai-agents", "git", "guardrails", "verification", "devtools"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent",
+  "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = []
+
+[project.scripts]
+constraint-sentinel = "constraint_sentinel.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

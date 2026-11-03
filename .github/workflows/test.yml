@@ -1,0 +1,102 @@
+name: Validate experimental release candidate
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install the actual beta Python package
+        run: python -m pip install . --no-deps
+      - name: Confirm installed version
+        run: constraint-sentinel --version
+      - name: Core Git and contract regression tests
+        run: PYTHONPATH=src python -m unittest discover -s tests -q
+
+  release-action-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Create disposable repo with approved contract
+        id: fixture
+        run: |
+          SHA=$(python3 scripts/make_smoke_fixture.py "$RUNNER_TEMP/sentinel-beta-fixture")
+          echo "base=$SHA" >> "$GITHUB_OUTPUT"
+      - name: Accept authorized source change with required check
+        uses: ./
+        with:
+          repository-path: ${{ runner.temp }}/sentinel-beta-fixture
+          base: ${{ steps.fixture.outputs.base }}
+          run-checks: "true"
+          audit-ignored-protected: "true"
+      - name: Add unauthorized payment change
+        run: |
+          printf "gateway = forbidden\n" > "$RUNNER_TEMP/sentinel-beta-fixture/src/payments/gateway.py"
+      - name: Reject unauthorized payment change
+        id: expected_payment_fail
+        continue-on-error: true
+        uses: ./
+        with:
+          repository-path: ${{ runner.temp }}/sentinel-beta-fixture
+          base: ${{ steps.fixture.outputs.base }}
+          run-checks: "true"
+          audit-ignored-protected: "true"
+      - name: Assert payment edit was rejected
+        env:
+          RESULT: ${{ steps.expected_payment_fail.outcome }}
+        run: test "$RESULT" = failure
+      - name: Restore gateway then delete required test file
+        run: |
+          git -C "$RUNNER_TEMP/sentinel-beta-fixture" restore -- src/payments/gateway.py
+          rm "$RUNNER_TEMP/sentinel-beta-fixture/tests/test_cart.py"
+      - name: Reject test deletion
+        id: expected_delete_fail
+        continue-on-error: true
+        uses: ./
+        with:
+          repository-path: ${{ runner.temp }}/sentinel-beta-fixture
+          base: ${{ steps.fixture.outputs.base }}
+          run-checks: "true"
+          audit-ignored-protected: "true"
+      - name: Assert test deletion was rejected
+        env:
+          RESULT: ${{ steps.expected_delete_fail.outcome }}
+        run: test "$RESULT" = failure
+      - name: Restore test then add ignored protected file
+        run: |
+          git -C "$RUNNER_TEMP/sentinel-beta-fixture" restore -- tests/test_cart.py
+          printf "synthetic fixture\n" > "$RUNNER_TEMP/sentinel-beta-fixture/src/payments/ignored-fixture.txt"
+      - name: Reject Git-ignored protected file
+        id: expected_ignored_fail
+        continue-on-error: true
+        uses: ./
+        with:
+          repository-path: ${{ runner.temp }}/sentinel-beta-fixture
+          base: ${{ steps.fixture.outputs.base }}
+          run-checks: "true"
+          audit-ignored-protected: "true"
+      - name: Assert ignored-file rejection
+        env:
+          RESULT: ${{ steps.expected_ignored_fail.outcome }}
+        run: test "$RESULT" = failure
+
+# The workflow only tests synthetic Git repositories. It does not certify
+# resistance to adversarial agents or external side effects.

@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "task_id": "checkout-calculation-fix",
+  "allow": [
+    "src/cart/**",
+    "tests/cart/**"
+  ],
+  "protect": [
+    "src/payments/**",
+    "db/migrations/**",
+    "config/production/**"
+  ],
+  "test_paths": [
+    "tests/**",
+    "**/test_*.py",
+    "**/*.test.ts"
+  ],
+  "deny_test_deletions": true,
+  "required_checks": [
+    {
+      "name": "unit-tests",
+      "argv": ["python", "-m", "unittest", "discover", "-s", "tests"],
+      "timeout_seconds": 120
+    }
+  ]
+}
