@@ -2,6 +2,24 @@
 
 All notable changes to Constraint Sentinel are recorded here.
 
+## 0.1.0b3 — Experimental Windows compatibility correction (2026-11-03)
+
+**Status: experimental; this patch does not certify the checker as a security boundary.**
+
+- Fix Windows false-positive test-deletion reports for legitimate unstaged test moves affected by Git checkout CRLF conversion.
+- Preserve strict raw-byte identity by default; separately label `git_checkout_crlf_match` only when pinned-baseline Git attributes and explicit `core.autocrlf=true` support the translation. Uncertain, changed, binary, custom-filtered and ambiguous cases remain blocked.
+- Fix test portability: skip newline-in-filename fixtures on Windows, and skip symlink fixtures only for expected unsupported/privilege errors.
+- Add five negative/positive regression tests (64 total) and a Windows-hosted Python 3.12 CI job alongside Linux Python 3.11, 3.12 and 3.14.
+- Credit @Rohank143 for volunteer Windows testing and the initial proposed correction in PR #2; the conservatively scoped fix was merged as PR #4.
+
+Validation is limited to documented synthetic behavior, including real Windows and Linux runs and hosted CI. It does not prove semantic test preservation or agent containment.
+
+## 0.1.0b2 — Experimental launcher correction (2026-11-03)
+
+- Corrected the v0.1.0b1 composite Action launcher: an attacker-controlled candidate checkout could shadow the verifier's Python module and cause a false pass. The Action now isolates the Python launcher and loads code from the trusted Action path.
+- Earlier v0.1.0b1 pins should not be used as merge gates. This release predates the Windows CRLF correction.
+
+
 ## 0.1.0b1 — Experimental beta (2026-11-02)
 
 **Status: experimental.** This is a limited developer preview, not a hardened or certified security product. Independent volunteer testing is invited.
