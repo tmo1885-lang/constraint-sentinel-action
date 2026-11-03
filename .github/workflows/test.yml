@@ -50,6 +50,9 @@ jobs:
       - name: Add unauthorized payment change
         run: |
           printf "gateway = forbidden\n" > "$RUNNER_TEMP/sentinel-beta-fixture/src/payments/gateway.py"
+      - name: Plant a harmless shadow module in the Action working directory
+        run: |
+          printf 'from pathlib import Path\nPath("shadow-executed").touch()\n' > constraint_sentinel.py
       - name: Reject unauthorized payment change
         id: expected_payment_fail
         continue-on-error: true
@@ -62,7 +65,10 @@ jobs:
       - name: Assert payment edit was rejected
         env:
           RESULT: ${{ steps.expected_payment_fail.outcome }}
-        run: test "$RESULT" = failure
+        run: |
+          test "$RESULT" = failure
+          test ! -e shadow-executed
+          rm constraint_sentinel.py
       - name: Restore gateway then delete required test file
         run: |
           git -C "$RUNNER_TEMP/sentinel-beta-fixture" restore -- src/payments/gateway.py

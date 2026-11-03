@@ -1,6 +1,8 @@
 # Constraint Sentinel
 
-**Independent task-scope verification for AI-assisted development.**
+**Experimental Git worktree checker for preapproved task contracts.**
+
+**Release notice.** The v0.1.0b1 Action can return success without running the trusted checker when Python imports a same-named module from the candidate checkout. Retire v0.1.0b1 and the earlier `660a778` Action pin as merge gates. The v0.1.0b2 launcher isolates Python startup.
 
 [![Status: experimental beta](https://img.shields.io/badge/status-experimental%20beta-334155)](docs/VALIDATION_STATUS.md)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-334155)](pyproject.toml)
@@ -90,13 +92,13 @@ jobs:
         with:
           fetch-depth: 0
       - name: Check approved task scope
-        uses: tmo1885-lang/constraint-sentinel-action@660a778e319c0c1b5aae43924a6fac155d029184
+        uses: tmo1885-lang/constraint-sentinel-action@v0.1.0b2
         with:
           base: ${{ github.event.pull_request.base.sha }}
           audit-ignored-protected: "true"
 ~~~
 
-**Security note:** The example pins the published, tested beta code to its exact **40-character Git commit SHA**. Once the `v0.1.0b1` release tag is available, you may use that shorter tag for convenience, but immutable SHA pinning is preferable for supply-chain control. Do not use a moving branch as a production trust anchor.
+For an immutable pin, use the full commit SHA recorded on the v0.1.0b2 release.
 
 The checker must be installed from an **owner-trusted source**. A passing GitHub Action is useful only when repository administrators make it a required status check and protect the trusted baseline and task contract from the coding agent.
 
