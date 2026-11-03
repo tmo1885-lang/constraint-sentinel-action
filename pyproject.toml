@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "constraint-sentinel"
-version = "0.1.0b2"
+version = "0.1.0b3"
 description = "Independent post-change task-scope verification for AI-assisted software development"
 readme = "README.md"
 requires-python = ">=3.11"
