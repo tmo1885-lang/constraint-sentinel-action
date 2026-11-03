@@ -64,17 +64,66 @@ def _file_digest(path: Path) -> str | None:
         return None
 
 
+
+def _git_checkout_crlf_digest(
+    repo: Path, base_sha: str, path: str, blob: bytes
+) -> str | None:
+    """Narrow EOL exception for a Git-configured Windows-style checkout.
+
+    Never execute custom smudge/clean filters or infer EOL equivalence from
+    normalization alone. Read effective attributes at the pinned baseline.
+    If Git's settings cannot be established, retain byte-exact behavior.
+    """
+    if b"\n" not in blob or b"\r" in blob or b"\x00" in blob:
+        return None
+    setting = subprocess.run(
+        ["git", "-C", str(repo), "config", "--bool", "--get", "core.autocrlf"],
+        capture_output=True, check=False,
+    )
+    if setting.returncode != 0 or setting.stdout.strip() != b"true":
+        return None
+    attrs = subprocess.run(
+        ["git", "-C", str(repo), "check-attr", "-z",
+         f"--source={base_sha}", "text", "eol", "filter", "--", path],
+        capture_output=True, check=False,
+    )
+    if attrs.returncode != 0:
+        return None
+    parts = attrs.stdout.split(b"\x00")
+    if len(parts) != 10 or parts[-1] != b"":
+        return None
+    expected_path = os.fsencode(path)
+    entries = [
+        (parts[i], parts[i + 1], parts[i + 2]) for i in (0, 3, 6)
+    ]
+    if any(record_path != expected_path for record_path, _, _ in entries):
+        return None
+    values = {key: value for _, key, value in entries}
+    if set(values) != {b"text", b"eol", b"filter"}:
+        return None
+    if (values[b"text"] not in (b"unspecified", b"set", b"auto")
+            or values[b"eol"] not in (b"unspecified", b"crlf")
+            or values[b"filter"] != b"unspecified"):
+        return None
+    # The baseline blob is pure LF text and Git is explicitly configured to
+    # check it out with CRLF; no general byte normalization is performed.
+    return hashlib.sha256(blob.replace(b"\n", b"\r\n")).hexdigest()
+
+
 def recover_exact_test_moves(
     repo: Path, base_sha: str, contract: Contract, changes: list[Change]
 ) -> tuple[list[Change], list[dict[str, str]]]:
-    """Recover uniquely identifiable, byte-identical, unstaged test renames.
+    """Recover uniquely identifiable exact or validated checkout-EOL test moves.
 
     Git sees an unstaged move as a tracked deletion and a separate untracked
     file. Only canonical, unchanged test content at a NEW allowed test path
-    qualifies. Modified, symlinked, ambiguous and duplicate candidate moves
+    qualifies. A narrow Git-verified CRLF checkout exception is reported
+    separately. Modified, symlinked, ambiguous and duplicate candidate moves
     remain conservative deletions. A recovery is not a semantic test audit.
     """
-    sources: dict[str, list[str]] = defaultdict(list)
+    # Digest -> (baseline path, evidence kind); preserve distinct methods
+    # instead of relabeling EOL-translated contents as byte-identical.
+    sources: dict[str, list[tuple[str, str]]] = defaultdict(list)
     destinations: dict[str, list[str]] = defaultdict(list)
     for change in changes:
         if (
@@ -113,7 +162,14 @@ def recover_exact_test_moves(
             data = git(repo, "show", f"{base_sha}:{change.before}")
             if len(data) <= MAX_RENAME_BYTES:
                 digest = hashlib.sha256(data).hexdigest()
-                sources[digest].append(change.before)
+                sources[digest].append((change.before, "exact_content_match"))
+                checkout_digest = _git_checkout_crlf_digest(
+                    repo, base_sha, change.before, data
+                )
+                if checkout_digest is not None and checkout_digest != digest:
+                    sources[checkout_digest].append(
+                        (change.before, "git_checkout_crlf_match")
+                    )
         elif (
             change.operation == "?" and change.after
             and matches(contract.test_paths, change.after)
@@ -125,28 +181,38 @@ def recover_exact_test_moves(
                 if digest is not None:
                     destinations[digest].append(change.after)
 
-    recovered: dict[str, str] = {}
-    for digest, old_paths in sources.items():
-        new_paths = destinations.get(digest, [])
-        if len(old_paths) == 1 and len(new_paths) == 1:
-            old, new = old_paths[0], new_paths[0]
-            if old != new and preserves_test_identity(old, new):
-                recovered[old] = new
+    # Check uniqueness across BOTH matching methods. Otherwise a raw match
+    # to one source and an EOL match to another could be wrongly accepted.
+    candidates: list[tuple[str, str, str]] = []
+    by_source: dict[str, set[str]] = defaultdict(set)
+    by_destination: dict[str, set[str]] = defaultdict(set)
+    for digest, old_entries in sources.items():
+        for old, method in old_entries:
+            for new in destinations.get(digest, []):
+                if old != new and preserves_test_identity(old, new):
+                    candidates.append((old, new, method))
+                    by_source[old].add(new)
+                    by_destination[new].add(old)
+
+    recovered: dict[str, tuple[str, str]] = {}
+    for old, new, method in candidates:
+        if len(by_source[old]) == 1 and len(by_destination[new]) == 1:
+            recovered[old] = (new, method)
 
     if not recovered:
         return changes, []
-    consumed = set(recovered.values())
+    consumed = {new for new, _ in recovered.values()}
     result: list[Change] = []
     for change in changes:
         if change.operation == "D" and change.before in recovered:
-            result.append(Change("R", change.before, recovered[change.before]))
+            result.append(Change("R", change.before, recovered[change.before][0]))
         elif change.operation == "?" and change.after in consumed:
             continue
         else:
             result.append(change)
     report = [
-        {"before": before, "after": after, "method": "exact_content_match"}
-        for before, after in sorted(recovered.items())
+        {"before": before, "after": new, "method": method}
+        for before, (new, method) in sorted(recovered.items())
     ]
     return sorted(result, key=lambda c: (c.after or c.before or "", c.operation)), report
 

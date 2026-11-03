@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import errno
 import json
 import os
 import subprocess
@@ -13,7 +14,7 @@ from pathlib import Path
 
 from constraint_sentinel.cli import main
 from constraint_sentinel.contract import ContractError, load_contract
-from constraint_sentinel.git import GitError, parse_name_status
+from constraint_sentinel.git import GitError, git, parse_name_status
 from constraint_sentinel.patterns import compile_pattern, matches, validate_pattern
 
 
@@ -156,11 +157,77 @@ class RealRepositoryTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(report["scope"]["status"], "pass")
         self.assertEqual(report["scope"]["files"][0]["operation"], "R")
+        base_bytes = git(self.repo, "show", f"{self.base}:tests/cart/test_calc.py")
+        moved_bytes = (self.repo / "tests/cart/test_math.py").read_bytes()
+        evidence = ("exact_content_match" if base_bytes == moved_bytes
+                    else "git_checkout_crlf_match")
         self.assertEqual(report["scope"]["recovered_renames"], [{
             "before": "tests/cart/test_calc.py",
             "after": "tests/cart/test_math.py",
-            "method": "exact_content_match",
+            "method": evidence,
         }])
+
+    def test_autocrlf_checkout_rename_is_classified_as_eol_not_exact(self) -> None:
+        run_git(self.repo, "config", "core.autocrlf", "true")
+        (self.repo / "tests/cart/test_calc.py").unlink()
+        (self.repo / "tests/cart/test_math.py").write_bytes(b"assert 1 + 1 == 2\r\n")
+        code, report = self.check()
+        self.assertEqual(code, 0)
+        self.assertEqual(report["scope"]["recovered_renames"], [{
+            "before": "tests/cart/test_calc.py",
+            "after": "tests/cart/test_math.py",
+            "method": "git_checkout_crlf_match",
+        }])
+
+    def test_crlf_difference_with_autocrlf_disabled_is_blocked(self) -> None:
+        run_git(self.repo, "config", "core.autocrlf", "false")
+        source = self.repo / "tests/cart/test_calc.py"
+        source.write_bytes(b"assert 1 + 1 == 2\r\n")
+        run_git(self.repo, "add", "tests/cart/test_calc.py")
+        run_git(self.repo, "commit", "-qm", "CRLF baseline with EOL conversion disabled")
+        self.base = run_git(self.repo, "rev-parse", "HEAD")
+        source.unlink()
+        (self.repo / "tests/cart/test_math.py").write_bytes(b"assert 1 + 1 == 2\n")
+        code, report = self.check()
+        self.assertEqual(code, 1)
+        self.assertIn("test_removed", {v["rule"] for v in report["scope"]["violations"]})
+        self.assertEqual(report["scope"]["recovered_renames"], [])
+
+    def test_autocrlf_checkout_does_not_accept_content_change(self) -> None:
+        run_git(self.repo, "config", "core.autocrlf", "true")
+        (self.repo / "tests/cart/test_calc.py").unlink()
+        (self.repo / "tests/cart/test_math.py").write_bytes(b"assert True\r\n")
+        code, report = self.check()
+        self.assertEqual(code, 1)
+        self.assertIn("test_removed", {v["rule"] for v in report["scope"]["violations"]})
+        self.assertEqual(report["scope"]["recovered_renames"], [])
+
+    def test_autocrlf_does_not_override_binary_text_attribute(self) -> None:
+        write(self.repo, ".gitattributes", "tests/cart/** -text\n")
+        run_git(self.repo, "add", ".gitattributes")
+        run_git(self.repo, "commit", "-qm", "Mark test paths non-text")
+        self.base = run_git(self.repo, "rev-parse", "HEAD")
+        run_git(self.repo, "config", "core.autocrlf", "true")
+        (self.repo / "tests/cart/test_calc.py").unlink()
+        (self.repo / "tests/cart/test_math.py").write_bytes(b"assert 1 + 1 == 2\r\n")
+        code, report = self.check()
+        self.assertEqual(code, 1)
+        self.assertIn("test_removed", {v["rule"] for v in report["scope"]["violations"]})
+        self.assertEqual(report["scope"]["recovered_renames"], [])
+
+    def test_autocrlf_ambiguous_moves_remain_blocked(self) -> None:
+        run_git(self.repo, "config", "core.autocrlf", "true")
+        write(self.repo, "tests/cart/test_second.py", "assert 1 + 1 == 2\n")
+        run_git(self.repo, "add", "tests/cart/test_second.py")
+        run_git(self.repo, "commit", "-qm", "Second identical source")
+        self.base = run_git(self.repo, "rev-parse", "HEAD")
+        (self.repo / "tests/cart/test_calc.py").unlink()
+        (self.repo / "tests/cart/test_second.py").unlink()
+        (self.repo / "tests/cart/test_math.py").write_bytes(b"assert 1 + 1 == 2\r\n")
+        code, report = self.check()
+        self.assertEqual(code, 1)
+        self.assertIn("test_removed", {v["rule"] for v in report["scope"]["violations"]})
+        self.assertEqual(report["scope"]["recovered_renames"], [])
 
     def test_unstaged_test_rename_with_modified_contents_remains_flagged(self) -> None:
         (self.repo / "tests/cart/test_calc.py").unlink()
@@ -254,7 +321,14 @@ class RealRepositoryTests(unittest.TestCase):
     def test_baseline_test_symlink_cannot_masquerade_as_regular_test_move(self) -> None:
         test = self.repo / "tests/cart/test_calc.py"
         test.unlink()
-        test.symlink_to("fixture-target.txt")
+        try:
+            test.symlink_to("fixture-target.txt")
+        except OSError as exc:
+            if getattr(exc, "winerror", None) == 1314 or exc.errno in (
+                errno.EPERM, errno.ENOTSUP, errno.EOPNOTSUPP
+            ):
+                self.skipTest(f"Host does not permit symlinks: {exc}")
+            raise
         run_git(self.repo, "add", "-A")
         run_git(self.repo, "commit", "-qm", "tracked test symlink fixture")
         self.base = run_git(self.repo, "rev-parse", "HEAD")
@@ -371,6 +445,7 @@ class RealRepositoryTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(report["scope"]["files"][0]["after"], "src/cart/résumé and notes.py")
 
+    @unittest.skipIf(sys.platform == "win32", "Windows forbids newline filenames")
     def test_newline_in_filename_is_not_parsed_as_two_files(self) -> None:
         write(self.repo, "src/cart/line\nbreak.py", "ok = True\n")
         code, report = self.check()
