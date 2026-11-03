@@ -14,7 +14,7 @@ from pathlib import Path
 
 from constraint_sentinel.cli import main
 from constraint_sentinel.contract import ContractError, load_contract
-from constraint_sentinel.git import GitError, parse_name_status
+from constraint_sentinel.git import GitError, git, parse_name_status
 from constraint_sentinel.patterns import compile_pattern, matches, validate_pattern
 
 
@@ -157,10 +157,14 @@ class RealRepositoryTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(report["scope"]["status"], "pass")
         self.assertEqual(report["scope"]["files"][0]["operation"], "R")
+        base_bytes = git(self.repo, "show", f"{self.base}:tests/cart/test_calc.py")
+        moved_bytes = (self.repo / "tests/cart/test_math.py").read_bytes()
+        evidence = ("exact_content_match" if base_bytes == moved_bytes
+                    else "git_checkout_crlf_match")
         self.assertEqual(report["scope"]["recovered_renames"], [{
             "before": "tests/cart/test_calc.py",
             "after": "tests/cart/test_math.py",
-            "method": "exact_content_match",
+            "method": evidence,
         }])
 
     def test_autocrlf_checkout_rename_is_classified_as_eol_not_exact(self) -> None:
