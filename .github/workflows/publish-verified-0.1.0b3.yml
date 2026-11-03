@@ -1,0 +1,54 @@
+name: Publish verified v0.1.0b3 beta
+on:
+  push:
+    branches: [release/publish-verified-0.1.0b3]
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    if: github.repository == 'tmo1885-lang/constraint-sentinel-action'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify tested source and publish experimental prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: tmo1885-lang/constraint-sentinel-action
+          TARGET: 8f3fb1c8cb7629f24f9d0baefad6ff298e205aa6
+          CI_RUN: '41719215902'
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/$GH_REPO/git/ref/heads/main" --jq .object.sha)" = "$TARGET"
+          test "$(gh api "repos/$GH_REPO/actions/runs/$CI_RUN" --jq '.conclusion + "/" + .head_sha')" = "success/$TARGET"
+          gh api "repos/$GH_REPO/actions/runs/$CI_RUN/jobs?per_page=100" > "$RUNNER_TEMP/jobs.json"
+          jq -e '([.jobs[] | select(.conclusion == "success") | .name] | sort) == (["release-action-smoke", "python-tests (ubuntu-latest, 3.11)", "python-tests (ubuntu-latest, 3.12)", "python-tests (ubuntu-latest, 3.14)", "python-tests (windows-latest, 3.12)"] | sort)' "$RUNNER_TEMP/jobs.json"
+          gh api "repos/$GH_REPO/contents/pyproject.toml?ref=$TARGET" --jq .content | base64 --decode > "$RUNNER_TEMP/pyproject.toml"
+          grep -Fx 'version = "0.1.0b3"' "$RUNNER_TEMP/pyproject.toml"
+          cat > "$RUNNER_TEMP/release-notes.md" <<'EOF'
+          Constraint Sentinel v0.1.0b3 is an **experimental beta** for testing the Git post-change scope checker. It is not a sandbox, runtime enforcement system, security certification or proof of task completion.
+
+          ### Windows compatibility correction
+          - Fix legitimate unstaged test-move false positives caused by Windows Git CRLF checkout conversion.
+          - Preserve byte-exact matching by default, with narrowly verified Git checkout CRLF equivalence reported separately as `git_checkout_crlf_match`.
+          - Avoid mistaken acceptance of byte-different moves when conversion is disabled, content is changed, Git attributes prohibit translation, or move identity is ambiguous.
+          - Skip platform-invalid test fixtures on Windows and only expected symlink privilege failures.
+          - Run a hosted Windows 3.12 CI job alongside Linux Python 3.11, 3.12, 3.14 and the GitHub Action smoke tests.
+
+          ### Verification
+          - The [merged-commit GitHub CI run](https://github.com/tmo1885-lang/constraint-sentinel-action/actions/runs/41719215902) passed all five jobs.
+          - Independent Windows 11 / Python 3.12 run: 64 tests, 2 platform skips, no failures; Linux / Python 3.14: 64 passed.
+          - Thanks to [@Rohank143](https://github.com/Rohank143) for the detailed external beta report and initial PR [#2](https://github.com/tmo1885-lang/constraint-sentinel-action/pull/2). The guarded solution was merged in [#4](https://github.com/tmo1885-lang/constraint-sentinel-action/pull/4); Windows CI and documentation were added in [#5](https://github.com/tmo1885-lang/constraint-sentinel-action/pull/5).
+
+          **Immutable Action source pin:** `8f3fb1c8cb7629f24f9d0baefad6ff298e205aa6`.
+
+          v0.1.0b1 has a known Action launcher false-pass defect. v0.1.0b2 corrected the launcher; v0.1.0b3 includes that correction plus the Windows compatibility fix. Please report new failures using small, non-sensitive synthetic reproductions.
+          EOF
+          if gh release view v0.1.0b3 >/dev/null 2>&1; then
+            test "$(gh api "repos/$GH_REPO/git/ref/tags/v0.1.0b3" --jq .object.sha)" = "$TARGET"
+            echo 'v0.1.0b3 already exists at the verified target; refusing to modify it'
+            exit 0
+          fi
+          gh release create v0.1.0b3 --target "$TARGET" --prerelease --title 'Constraint Sentinel v0.1.0b3 — Experimental Windows correction' --notes-file "$RUNNER_TEMP/release-notes.md"
+          test "$(gh api "repos/$GH_REPO/git/ref/tags/v0.1.0b3" --jq .object.sha)" = "$TARGET"
+          gh release view v0.1.0b3 --json tagName,isPrerelease,url
