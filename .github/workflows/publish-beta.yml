@@ -1,0 +1,53 @@
+name: Publish v0.1.0b1 experimental beta
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/publish-beta.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  publish-beta:
+    if: github.repository == 'tmo1885-lang/constraint-sentinel-action'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out exact release candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify source has not changed since tested public snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --quiet 660a778e319c0c1b5aae43924a6fac155d029184 HEAD -- src/constraint_sentinel action.yml pyproject.toml
+          test "$(PYTHONPATH=src python3 -m constraint_sentinel --version)" = "0.1.0b1"
+      - name: Run independent Git fixture regression tests
+        run: PYTHONPATH=src python3 -m unittest discover -s tests -q
+      - name: Create immutable-version candidate tag and public prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Velorin Intelligence"
+          git config user.email "258522134+tmo1885-lang@users.noreply.github.com"
+          if ! git ls-remote --tags origin refs/tags/v0.1.0b1 | grep -q .; then
+            git tag -a v0.1.0b1 -m "Constraint Sentinel v0.1.0b1 - experimental beta" "$GITHUB_SHA"
+            git push origin refs/tags/v0.1.0b1
+          fi
+          if ! gh release view v0.1.0b1 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create v0.1.0b1 \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --prerelease \
+              --title "Constraint Sentinel v0.1.0b1 — Experimental Beta" \
+              --notes-file CHANGELOG.md
+          fi
+          gh release view v0.1.0b1 --repo "$GITHUB_REPOSITORY" --json url,isPrerelease --jq '{url,isPrerelease}'
