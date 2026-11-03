@@ -254,7 +254,10 @@ class RealRepositoryTests(unittest.TestCase):
     def test_baseline_test_symlink_cannot_masquerade_as_regular_test_move(self) -> None:
         test = self.repo / "tests/cart/test_calc.py"
         test.unlink()
-        test.symlink_to("fixture-target.txt")
+        try:
+            test.symlink_to("fixture-target.txt")
+        except OSError as exc:
+            self.skipTest(f"Symlinks not supported or permitted on this host: {exc}")
         run_git(self.repo, "add", "-A")
         run_git(self.repo, "commit", "-qm", "tracked test symlink fixture")
         self.base = run_git(self.repo, "rev-parse", "HEAD")
@@ -371,6 +374,7 @@ class RealRepositoryTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(report["scope"]["files"][0]["after"], "src/cart/résumé and notes.py")
 
+    @unittest.skipIf(sys.platform == "win32", "Windows filesystems do not support newlines in filenames")
     def test_newline_in_filename_is_not_parsed_as_two_files(self) -> None:
         write(self.repo, "src/cart/line\nbreak.py", "ok = True\n")
         code, report = self.check()

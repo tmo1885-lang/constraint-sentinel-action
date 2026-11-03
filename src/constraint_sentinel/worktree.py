@@ -55,8 +55,8 @@ def _file_digest(path: Path) -> str | None:
                 return None
             digest = hashlib.sha256()
             with os.fdopen(descriptor, "rb", closefd=False) as reader:
-                while chunk := reader.read(1024 * 1024):
-                    digest.update(chunk)
+                content = reader.read()
+                digest.update(content.replace(b"\r\n", b"\n"))
             return digest.hexdigest()
         finally:
             os.close(descriptor)
@@ -112,7 +112,7 @@ def recover_exact_test_moves(
                 continue
             data = git(repo, "show", f"{base_sha}:{change.before}")
             if len(data) <= MAX_RENAME_BYTES:
-                digest = hashlib.sha256(data).hexdigest()
+                digest = hashlib.sha256(data.replace(b"\r\n", b"\n")).hexdigest()
                 sources[digest].append(change.before)
         elif (
             change.operation == "?" and change.after
