@@ -1,45 +1,35 @@
 # What has actually been validated
 
-**Experimental preview candidate v0.1.0b1. This is not a security certification.**
+**Experimental v0.1.0b3 candidate. This is not a security certification.**
 
-## Reproducible checks
+## Validated behavior and provenance
 
-In the private staging workflow, the beta Python distribution was installed and its focused Git behavior suite was run on hosted Linux under:
-
-| Environment | Unit/behavior tests | Package installation |
+| Environment | Reported behavior | Evidence |
 | --- | --- | --- |
-| Python 3.11 | 59 passed | Passed |
-| Python 3.12 | 59 passed | Passed |
-| Python 3.14 | 59 passed | Passed |
+| Windows 11, Python 3.12 (independent local run) | 64 tests run; 62 pass; 2 expected platform skips | Clean checkout of reviewed fix, including CRLF tests |
+| Linux, Python 3.14 (independent Codespace run) | 64 tests pass | Clean checkout of reviewed fix |
+| GitHub-hosted Linux, Python 3.11 / 3.12 / 3.14 | 64 tests per job pass | Merged fix CI, [run 41715634959](https://github.com/tmo1885-lang/constraint-sentinel-action/actions/runs/41715634959) |
+| GitHub-hosted Windows, Python 3.12 | New mandatory test-matrix job for v0.1.0b3; verify its result before publication | [test workflow](../.github/workflows/test.yml) |
 
-The composite GitHub Action was also executed against a **disposable synthetic Git repository**. The approved baseline contained a task contract and a non-dangerous required check.
+The volunteer beta report by @Rohank143 independently exposed three Windows-specific failures. We reproduced them (59 tests: one failure and two errors), checked the contributor's original patch, and found an additional security-relevant regression: unconditional CRLF normalization could accept byte-different tests as exact-content moves even when conversion was disabled.
 
-| Synthetic outcome | Observed |
-| --- | --- |
-| Valid changed cart file within approved scope | PASS |
-| Modified protected payment gateway | FAIL (protected_path) |
-| Deleted existing test file | FAIL (test_removed) |
-| Created ignored protected file | FAIL (ignored_protected_path) |
-| Configured required fixture check after scope passed | PASS |
-| Required checks when Git scope already failed | Skipped as expected |
-| Task-completion assessment | Always NOT VERIFIED |
+The revised implementation retains raw-byte matching; a **distinct** `git_checkout_crlf_match` outcome requires `core.autocrlf=true`, pinned-baseline attributes allowing CRLF conversion, a pure-LF non-binary source, and an exact CRLF-translated destination. Negative tests cover disabled translation, differing content, explicit binary attributes, and ambiguous matches. A successful Git scope check still cannot prove semantic preservation.
 
-An earlier internal engineering run used the same core checker in a **real GitHub Copilot CLI coding task** with prewritten acceptance tests, but that is not proof of runtime enforcement or representative real-world reliability.
+The composite GitHub Action has also been exercised on a **disposable synthetic repository**. Hosted checks cover an allowed source edit, rejecting a protected payment modification and a deleted test, an opt-in ignored-protected-path check, and a candidate-module-shadowing regression. The launcher isolation fix was released in v0.1.0b2.
 
-Previous controlled experiments also compared this scope checker against open-source AQG, Proof of Done, and a small independently written Git/Python reference. A hardened DIY checker matched the tool's selected committed-case path coverage, highlighting the absence of a unique detection algorithm.
+An earlier limited GitHub Copilot CLI coding task and comparisons against open-source tools were conducted separately during internal development. Neither represents general runtime enforcement.
 
-## What we have NOT validated
+## Known limits and unvalidated claims
 
-- Real-world correctness across broad developer projects, codebases, languages or operating systems other than the hosted Linux tests.
-- A fully adversarial live agent with access to the verifier, branch protection settings, or privileged runner.
-- Prevention of unauthorized edits before they occur.
-- External side effects, data exfiltration, secrets exposure, or arbitrary semantic test weakening.
-- Hosted binary identity attestation, immutable self-verification, or secure customer deployment.
-- Accuracy statistics, independent volunteer adoption, or enterprise safety requirements.
-- GitHub Marketplace uniqueness, terms, or a published release.
+- Post-change Git checks cannot prevent unauthorized edits *before* execution, stop network side effects, or prove task completion.
+- Semantic test weakening and external state changes are outside ordinary path-based verification.
+- No representative adoption metrics, accuracy estimates, enterprise assessment or security certification has been established.
+- The host, branch protection, trusted baseline, verifier and policy must remain outside the coding agent's control.
+- These checks sample specific Git states and environments, not arbitrary codebases or malicious privileged runners.
+- The project has not undergone independent broad security review; a GitHub-hosted test pass is not an attestation.
 
 ## What feedback would change our judgment?
 
-A useful beta report contains a small *synthetic* reproduction where a legitimate task failed or an out-of-scope change passed. Setup time and user understanding matter as much as raw detection. Negative evidence is welcome.
+A useful beta report contains a small **synthetic** reproduction where a legitimate change failed or an out-of-scope change passed. Please include Git settings, Python/Git versions and operating system; do not include sensitive code, credentials or private logs.
 
-**Evidence provenance:** These checks were run on a private staging branch before public distribution. Releasing this project does not provide production-security certification, Marketplace endorsement, or any guarantee beyond the tested cases.
+**Evidence provenance:** Verified runs described above are limited to the named commits and environments. Releasing a new version does not add security guarantees beyond the tested cases.
