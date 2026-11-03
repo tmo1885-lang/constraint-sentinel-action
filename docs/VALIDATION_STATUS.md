@@ -9,7 +9,7 @@
 | Windows 11, Python 3.12 (independent local run) | 64 tests run; 62 pass; 2 expected platform skips | Clean checkout of reviewed fix, including CRLF tests |
 | Linux, Python 3.14 (independent Codespace run) | 64 tests pass | Clean checkout of reviewed fix |
 | GitHub-hosted Linux, Python 3.11 / 3.12 / 3.14 | 64 tests per job pass | Merged fix CI, [run 41715634959](https://github.com/tmo1885-lang/constraint-sentinel-action/actions/runs/41715634959) |
-| GitHub-hosted Windows, Python 3.12 | New mandatory test-matrix job for v0.1.0b3; verify its result before publication | [test workflow](../.github/workflows/test.yml) |
+| GitHub-hosted Windows, Python 3.12 | Hosted job passed on v0.1.0b3 release-preparation branch | [run 41718579138](https://github.com/tmo1885-lang/constraint-sentinel-action/actions/runs/41718579138) |
 
 The volunteer beta report by @Rohank143 independently exposed three Windows-specific failures. We reproduced them (59 tests: one failure and two errors), checked the contributor's original patch, and found an additional security-relevant regression: unconditional CRLF normalization could accept byte-different tests as exact-content moves even when conversion was disabled.
 
