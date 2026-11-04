@@ -27,6 +27,7 @@ class TaskLedgerUXTests(unittest.TestCase):
         self.repo = Path(tmp.name) / "repo"
         self.repo.mkdir()
         git(self.repo, "init", "-q")
+        git(self.repo, "branch", "-M", "main")
         git(self.repo, "config", "user.name", "Owner")
         git(self.repo, "config", "user.email", "owner@example.invalid")
         for name in ("alpha.py", "beta.py"):
