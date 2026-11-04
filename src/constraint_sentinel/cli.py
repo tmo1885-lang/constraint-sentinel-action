@@ -8,6 +8,7 @@ from pathlib import Path
 
 from . import __version__
 from .approval import approve_task, setup_ci
+from .task_ledger import start_task, check_task, setup_task_ci
 from .checks import run_checks
 from .contract import ContractError, load_contract
 from .engine import evaluate_scope, make_report
@@ -166,6 +167,38 @@ def main(argv: list[str] | None = None) -> int:
                                 help="Test path/glob (optional; repeat this flag)")
     approve_parser.add_argument("--replace", action="store_true",
                                 help="Explicitly replace an existing task contract")
+    task_parser = sub.add_parser("task", help="Experimental task-specific approval ledger")
+    task_commands = task_parser.add_subparsers(dest="task_command", required=True)
+    task_setup_parser = task_commands.add_parser(
+        "setup-ci", help="Owner: create trusted automatic task-scope PR check"
+    )
+    task_setup_parser.add_argument("--repo", type=Path, default=Path("."))
+    task_setup_parser.add_argument("--checker-sha", required=True,
+                                   help="Reviewed immutable checker commit (one-time setup)")
+    start_parser = task_commands.add_parser(
+        "start", help="Owner: approve a task on a separate ledger branch and create task branch"
+    )
+    start_parser.add_argument("--repo", type=Path, default=Path("."))
+    start_parser.add_argument("--branch", required=True, help="Task branch, e.g. task/fix-123")
+    start_parser.add_argument("--task", required=True)
+    start_parser.add_argument("--allow", action="append", required=True)
+    start_parser.add_argument("--protect", action="append", default=[])
+    start_parser.add_argument("--test-path", action="append", default=[])
+    start_parser.add_argument("--publish", action="store_true",
+                              help="Push approval to origin before opening the coding branch")
+    verify_parser = task_commands.add_parser(
+        "check", help="Verify task against owner-controlled approval ref (no SHA typing)"
+    )
+    verify_parser.add_argument("--repo", type=Path, default=Path("."))
+    verify_parser.add_argument("--approval-ref", default="refs/remotes/origin/sentinel-approvals")
+    verify_parser.add_argument("--branch", help="PR head branch; default: current branch")
+    verify_parser.add_argument("--expected-base", help="Trusted PR base SHA, supplied by CI")
+    verify_parser.add_argument("--expected-base-branch", help="Trusted PR target branch, supplied by CI")
+    verify_parser.add_argument("--approval-repo", type=Path,
+                               help="Separate owner-controlled checkout holding the approval ref")
+    verify_parser.add_argument("--head", help="Commit to compare; default: worktree")
+    verify_parser.add_argument("--audit-ignored-protected", action="store_true")
+    verify_parser.add_argument("--format", choices=("text", "json"), default="text")
     check_parser = sub.add_parser("check", help="Compare changes against a trusted base contract")
     check_parser.add_argument("--repo", type=Path, default=Path("."))
     check_parser.add_argument("--base", required=True, help="Trusted baseline commit or ref")
@@ -186,6 +219,39 @@ def main(argv: list[str] | None = None) -> int:
             print("Push this commit to the protected PR base branch before agent work.")
             print("Require the sentinel-scope status check; keep the workflow outside agent control.")
             return 0
+        if args.command == "task":
+            if args.task_command == "setup-ci":
+                ci_sha = setup_task_ci(args.repo, checker_sha=args.checker_sha)
+                print(f"Trusted task PR workflow committed at {ci_sha}.")
+                print("Owner must publish the workflow and configure required checks.")
+                print("Protect the sentinel-approvals branch from coding agents.")
+                return 0
+            if args.task_command == "start":
+                base, approval = start_task(
+                    args.repo, branch=args.branch, task_id=args.task,
+                    allow=args.allow, protect=args.protect,
+                    test_paths=args.test_path, publish=args.publish,
+                )
+                print(f"Approved {args.task!r} on separate ledger commit {approval}")
+                print(f"Task branch {args.branch} created from {base}; main unchanged.")
+                if not args.publish:
+                    print("LOCAL ONLY: approval has not been pushed to an owner-protected remote.")
+                return 0
+            report = check_task(
+                args.repo, approval_ref=args.approval_ref, branch=args.branch,
+                expected_base=args.expected_base,
+                expected_base_branch=args.expected_base_branch,
+                head=args.head, approval_repo=args.approval_repo,
+                audit_ignored_protected=args.audit_ignored_protected,
+            )
+            if args.format == "json":
+                print(json.dumps(report, indent=2, ensure_ascii=True))
+            else:
+                print(f"Constraint Sentinel task scope: {report['status'].upper()}")
+                for item in report["scope"]["violations"]:
+                    print(f"  [{item['rule']}] {item['path']}: {item['detail']}")
+                print("Task correctness: NOT VERIFIED")
+            return 0 if report["status"] == "pass" else 1
         if args.command == "approve":
             base = approve_task(
                 args.repo, task_id=args.task, allow=args.allow,
