@@ -1,15 +1,18 @@
 # What has actually been validated
 
-**Experimental v0.1.0b3 candidate. This is not a security certification.**
+**Experimental v0.1.0b3 release. This is not a security certification.**
 
 ## Validated behavior and provenance
 
 | Environment | Reported behavior | Evidence |
 | --- | --- | --- |
 | Windows 11, Python 3.12 (independent local run) | 64 tests run; 62 pass; 2 expected platform skips | Clean checkout of reviewed fix, including CRLF tests |
+| Windows 11, Python 3.13 (`core.autocrlf=true`, external volunteer retest) | 64 tests run in 89.415s; 62 pass; 2 expected Windows platform skips; 0 failures and 0 errors, as reported by the tester | @Rohank143's [v0.1.0b3 release-commit retest](https://github.com/tmo1885-lang/constraint-sentinel-action/issues/1#issuecomment-6628984461), commit `8f3fb1c` |
 | Linux, Python 3.14 (independent Codespace run) | 64 tests pass | Clean checkout of reviewed fix |
 | GitHub-hosted Linux, Python 3.11 / 3.12 / 3.14 | 64 tests per job pass | Merged fix CI, [run 41715634959](https://github.com/tmo1885-lang/constraint-sentinel-action/actions/runs/41715634959) |
 | GitHub-hosted Windows, Python 3.12 | Hosted job passed on v0.1.0b3 release-preparation branch | [run 41718579138](https://github.com/tmo1885-lang/constraint-sentinel-action/actions/runs/41718579138) |
+
+The volunteer's November 4, 2026 retest specifically reports PASS for `test_unstaged_test_rename_with_identical_content_is_allowed` and `test_crlf_difference_with_autocrlf_disabled_is_blocked`, with the two platform-specific tests skipping as intended. This is an externally reported regression result on the published release commit, not a maintainer-observed run or a general security certification.
 
 The volunteer beta report by @Rohank143 independently exposed three Windows-specific failures. We reproduced them (59 tests: one failure and two errors), checked the contributor's original patch, and found an additional security-relevant regression: unconditional CRLF normalization could accept byte-different tests as exact-content moves even when conversion was disabled.
 
