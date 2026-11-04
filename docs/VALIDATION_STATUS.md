@@ -22,6 +22,8 @@ The composite GitHub Action has also been exercised on a **disposable synthetic 
 
 An earlier limited GitHub Copilot CLI coding task and comparisons against open-source tools were conducted separately during internal development. Neither represents general runtime enforcement.
 
+On November 4, 2026, an additional [five-scenario internal GitHub Copilot CLI pilot](CS_PILOT_01_20261104.md) produced five expected scope classifications on separate disposable Git worktrees: two authorized scenarios passed and three deliberately out-of-scope scenarios failed. This is agent-driven but intentionally scripted, not an estimate of spontaneous agent drift or general real-world accuracy. The pilot also exposed a [non-security version-reporting mismatch](https://github.com/tmo1885-lang/constraint-sentinel-action/issues/6) in the v0.1.0b3 CLI banner.
+
 ## Known limits and unvalidated claims
 
 - Post-change Git checks cannot prevent unauthorized edits *before* execution, stop network side effects, or prove task completion.
