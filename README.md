@@ -14,7 +14,7 @@ An open-source GitHub Action and Python CLI from **Velorin Intelligence**. Const
 
 [Get started](#quick-start-github-actions) · [How it works](#how-it-works) · [Test evidence](docs/VALIDATION_STATUS.md) · [Beta testing](docs/BETA_TESTING.md) · [Security limitations](SECURITY.md)
 
-> **Scope of assurance:** We have validated specific Git operations through synthetic tests and one limited real coding-agent workflow. This is *post-change scope verification*, not a sandbox, pre-execution guard, security certification, task-completion guarantee, or substitute for human review.
+> **Scope of assurance:** We have validated specific Git operations through synthetic tests and bounded internal coding-agent workflows. This is *post-change scope verification*, not a sandbox, pre-execution guard, security certification, task-completion guarantee, or substitute for human review.
 
 Constraint Sentinel is designed to complement existing CI and [Agent Quality Gates](https://github.com/deeppatternai/agent-quality-gates) (AQG). It is **unofficial** and has no affiliation with or endorsement from AQG.
 
@@ -98,7 +98,7 @@ jobs:
           audit-ignored-protected: "true"
 ~~~
 
-For an immutable pin, use the full commit SHA recorded on the v0.1.0b3 release.
+For an immutable Action pin, use `8f3fb1c8cb7629f24f9d0baefad6ff298e205aa6` (the v0.1.0b3 release commit). Do **not** pin v0.1.0b1 as an enforcement gate.
 
 The checker must be installed from an **owner-trusted source**. A passing GitHub Action is useful only when repository administrators make it a required status check and protect the trusted baseline and task contract from the coding agent.
 
@@ -138,7 +138,7 @@ We welcome developers who use Copilot, Codex, Claude Code or similar assistants 
 
 We particularly want reports of false positives, missed scope violations, setup friction, confusing output, or cases where existing CI is better. **Negative findings are useful.** Participation is voluntary; no compensation is offered or implied.
 
-Please read the [volunteer testing guide](docs/BETA_TESTING.md) and use GitHub Issues after the repository is released. **Never submit credentials, proprietary source, sensitive logs, private repo URLs, or customer information.** For sensitive security findings, follow [SECURITY.md](SECURITY.md).
+Please read the [volunteer testing guide](docs/BETA_TESTING.md) and share results using the [public beta feedback issue](https://github.com/tmo1885-lang/constraint-sentinel-action/issues/1) or [issue templates](https://github.com/tmo1885-lang/constraint-sentinel-action/issues/new/choose). **Never submit credentials, proprietary source, sensitive logs, private repo URLs, or customer information.** For sensitive security findings, follow [SECURITY.md](SECURITY.md).
 
 ## License and project status
 
