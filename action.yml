@@ -24,6 +24,22 @@ inputs:
     description: "Opt in to scanning Git-ignored untracked protected paths; may be expensive"
     required: false
     default: "false"
+  approval-repo-path:
+    description: "Optional separate trusted approval checkout (activates per-task ledger mode)"
+    required: false
+    default: ""
+  task-branch:
+    description: "Trusted PR head branch name for task-specific approvals"
+    required: false
+    default: ""
+  expected-base-branch:
+    description: "Trusted PR base branch name; must match approved task"
+    required: false
+    default: ""
+  head:
+    description: "Trusted candidate commit SHA (for task-specific PR check)"
+    required: false
+    default: ""
 runs:
   using: "composite"
   steps:
@@ -36,6 +52,10 @@ runs:
         SENTINEL_CONTRACT: ${{ inputs.contract }}
         SENTINEL_RUN_CHECKS: ${{ inputs.run-checks }}
         SENTINEL_AUDIT_IGNORED: ${{ inputs.audit-ignored-protected }}
+        SENTINEL_APPROVAL_REPO: ${{ inputs.approval-repo-path }}
+        SENTINEL_TASK_BRANCH: ${{ inputs.task-branch }}
+        SENTINEL_EXPECTED_BASE_BRANCH: ${{ inputs.expected-base-branch }}
+        SENTINEL_HEAD: ${{ inputs.head }}
       run: |
         set -euo pipefail
         args=(check --repo "$SENTINEL_REPO" --base "$SENTINEL_BASE" --contract "$SENTINEL_CONTRACT")
@@ -49,6 +69,26 @@ runs:
           args+=(--audit-ignored-protected)
         elif [[ "$SENTINEL_AUDIT_IGNORED" != "false" ]]; then
           echo "Invalid audit-ignored-protected value: expected true or false" >&2
+          exit 2
+        fi
+        if [[ -n "$SENTINEL_APPROVAL_REPO" ]]; then
+          if [[ -z "$SENTINEL_TASK_BRANCH" || -z "$SENTINEL_EXPECTED_BASE_BRANCH" || -z "$SENTINEL_HEAD" ]]; then
+            echo "Task mode requires branch, expected base branch, and candidate head" >&2
+            exit 2
+          fi
+          if [[ "$SENTINEL_RUN_CHECKS" != "false" || "$SENTINEL_AUDIT_IGNORED" != "false" ]]; then
+            echo "Task PR mode does not execute candidate code or audit ignored worktree paths" >&2
+            exit 2
+          fi
+          args=(task check --repo "$SENTINEL_REPO"
+            --approval-repo "$SENTINEL_APPROVAL_REPO"
+            --approval-ref HEAD
+            --branch "$SENTINEL_TASK_BRANCH"
+            --expected-base "$SENTINEL_BASE"
+            --expected-base-branch "$SENTINEL_EXPECTED_BASE_BRANCH"
+            --head "$SENTINEL_HEAD")
+        elif [[ -n "$SENTINEL_TASK_BRANCH" || -n "$SENTINEL_EXPECTED_BASE_BRANCH" || -n "$SENTINEL_HEAD" ]]; then
+          echo "Incomplete task-specific approval parameters" >&2
           exit 2
         fi
         python3 -I -S "$SENTINEL_ACTION_PATH/scripts/run_action.py" "${args[@]}"

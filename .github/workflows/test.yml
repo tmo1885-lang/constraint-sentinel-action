@@ -111,5 +111,43 @@ jobs:
           RESULT: ${{ steps.expected_ignored_fail.outcome }}
         run: test "$RESULT" = failure
 
+      - name: Prepare owner-ledger task fixture
+        id: task_fixture
+        env:
+          PYTHONPATH: src
+        run: |
+          python3 scripts/make_task_scope_fixture.py "$RUNNER_TEMP/sentinel-task-fixture" >> "$GITHUB_OUTPUT"
+      - name: Accept approved task change with external approval checkout
+        uses: ./
+        with:
+          repository-path: ${{ runner.temp }}/sentinel-task-fixture/candidate
+          approval-repo-path: ${{ runner.temp }}/sentinel-task-fixture/trusted-approvals
+          task-branch: task/smoke-cart
+          expected-base-branch: main
+          base: ${{ steps.task_fixture.outputs.base }}
+          head: ${{ steps.task_fixture.outputs.head }}
+      - name: Commit unapproved payment change in fixture
+        run: |
+          printf "SAFE = False\n" > "$RUNNER_TEMP/sentinel-task-fixture/candidate/payments.py"
+          git -C "$RUNNER_TEMP/sentinel-task-fixture/candidate" add payments.py
+          git -C "$RUNNER_TEMP/sentinel-task-fixture/candidate" \
+            -c user.name=SentinelSmoke -c user.email=smoke@example.invalid \
+            commit -qm "Synthetic unapproved payment edit"
+      - name: Reject unapproved task change with external approval checkout
+        id: expected_task_fail
+        continue-on-error: true
+        uses: ./
+        with:
+          repository-path: ${{ runner.temp }}/sentinel-task-fixture/candidate
+          approval-repo-path: ${{ runner.temp }}/sentinel-task-fixture/trusted-approvals
+          task-branch: task/smoke-cart
+          expected-base-branch: main
+          base: ${{ steps.task_fixture.outputs.base }}
+          head: HEAD
+      - name: Assert task-specific violation failed
+        env:
+          RESULT: ${{ steps.expected_task_fail.outcome }}
+        run: test "$RESULT" = failure
+
 # The workflow only tests synthetic Git repositories. It does not certify
 # resistance to adversarial agents or external side effects.
