@@ -26,8 +26,8 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install the actual beta Python package
         run: python -m pip install . --no-deps
-      - name: Confirm installed version
-        run: constraint-sentinel --version
+      - name: Confirm installed CLI version matches package metadata
+        run: python -c "import importlib.metadata as m, subprocess; expected=m.version('constraint-sentinel'); actual=subprocess.check_output(['constraint-sentinel', '--version'], text=True).strip(); assert actual == expected, f'{actual} != {expected}'"
       - name: Core Git and contract regression tests
         env:
           PYTHONPATH: src
