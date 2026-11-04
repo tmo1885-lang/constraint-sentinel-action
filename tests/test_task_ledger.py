@@ -8,7 +8,9 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+from constraint_sentinel import task_ledger
 from constraint_sentinel.cli import main
 
 
@@ -181,6 +183,85 @@ class TaskLedgerUXTests(unittest.TestCase):
         git(self.repo, "switch", "-q", "main")
         with contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(self.start("task/alpha", "alpha.py"), 2)
+        self.assertEqual(git(self.repo, "branch", "--show-current"), "main")
+
+    def test_failed_publish_removes_new_approval_and_allows_retry(self) -> None:
+        self.assertEqual(git(self.repo, "remote"), "")
+        errors = io.StringIO()
+        with contextlib.redirect_stderr(errors):
+            self.assertEqual(self.start("task/alpha", "alpha.py", "--publish"), 2)
+        self.assertIn("origin", errors.getvalue())
+        self.assertEqual(git(self.repo, "branch", "--list", "task/*"), "")
+        self.assertEqual(git(self.repo, "branch", "--show-current"), "main")
+        self.assertEqual(git(self.repo, "rev-parse", "HEAD"), self.base)
+        self.assertEqual(git(self.repo, "status", "--porcelain"), "")
+        self.assertEqual(git(self.repo, "for-each-ref", "--format=%(refname)",
+                             task_ledger.APPROVAL_REF), "")
+        self.assertEqual(self.start("task/alpha", "alpha.py"), 0)
+        code, result = self.check()
+        self.assertEqual(code, 0)
+        self.assertEqual(result["task_id"], "task/alpha")
+
+    def test_failed_publish_restores_existing_approval_and_allows_retry(self) -> None:
+        self.assertEqual(self.start("task/alpha", "alpha.py"), 0)
+        previous = git(self.repo, "rev-parse", task_ledger.APPROVAL_REF)
+        previous_tree = git(self.repo, "ls-tree", "-r", previous)
+        git(self.repo, "switch", "-q", "main")
+        self.assertEqual(git(self.repo, "remote"), "")
+        errors = io.StringIO()
+        with contextlib.redirect_stderr(errors):
+            self.assertEqual(self.start("task/beta", "beta.py", "--publish"), 2)
+        self.assertIn("origin", errors.getvalue())
+        self.assertEqual(git(self.repo, "branch", "--list", "task/beta"), "")
+        self.assertEqual(git(self.repo, "branch", "--show-current"), "main")
+        self.assertEqual(git(self.repo, "rev-parse", "HEAD"), self.base)
+        self.assertEqual(git(self.repo, "status", "--porcelain"), "")
+        self.assertEqual(git(self.repo, "rev-parse", task_ledger.APPROVAL_REF), previous)
+        self.assertEqual(git(self.repo, "ls-tree", "-r", task_ledger.APPROVAL_REF),
+                         previous_tree)
+        self.assertEqual(self.start("task/beta", "beta.py"), 0)
+        self.assertEqual(git(self.repo, "rev-parse", f"{task_ledger.APPROVAL_REF}^"),
+                         previous)
+        code, result = self.check()
+        self.assertEqual(code, 0)
+        self.assertEqual(result["task_id"], "task/beta")
+        git(self.repo, "switch", "-q", "task/alpha")
+        code, result = self.check()
+        self.assertEqual(code, 0)
+        self.assertEqual(result["task_id"], "task/alpha")
+
+    def test_failed_publish_does_not_rewind_concurrent_approval(self) -> None:
+        self.assert_failed_publish_preserves_concurrent_approval()
+
+    def test_failed_publish_does_not_rewind_concurrent_existing_approval(self) -> None:
+        self.assertEqual(self.start("task/alpha", "alpha.py"), 0)
+        git(self.repo, "switch", "-q", "main")
+        self.assert_failed_publish_preserves_concurrent_approval()
+
+    def assert_failed_publish_preserves_concurrent_approval(self) -> None:
+        real_git = task_ledger._git
+        concurrent = None
+
+        def advance_before_push(repo: Path, *args: str, **kwargs: bool) -> str | None:
+            nonlocal concurrent
+            if args[0] == "push":
+                approved = git(repo, "rev-parse", task_ledger.APPROVAL_REF)
+                tree = git(repo, "rev-parse", f"{approved}^{{tree}}")
+                concurrent = git(repo, "commit-tree", tree, "-p", approved,
+                                 "-m", "Concurrent owner approval")
+                git(repo, "update-ref", task_ledger.APPROVAL_REF, concurrent, approved)
+            return real_git(repo, *args, **kwargs)
+
+        errors = io.StringIO()
+        self.assertEqual(git(self.repo, "remote"), "")
+        with mock.patch.object(task_ledger, "_git", side_effect=advance_before_push):
+            with contextlib.redirect_stderr(errors):
+                self.assertEqual(self.start("task/beta", "beta.py", "--publish"), 2)
+        self.assertIsNotNone(concurrent)
+        self.assertEqual(git(self.repo, "rev-parse", task_ledger.APPROVAL_REF), concurrent)
+        self.assertIn("origin", errors.getvalue())
+        self.assertIn("rollback failed", errors.getvalue())
+        self.assertEqual(git(self.repo, "branch", "--list", "task/beta"), "")
         self.assertEqual(git(self.repo, "branch", "--show-current"), "main")
 
     def test_worktree_contract_cannot_change_approved_scope(self) -> None:
