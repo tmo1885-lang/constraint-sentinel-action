@@ -55,6 +55,7 @@ def start_task(
 
     No change is committed to main. Approval is written *before* creating the
     coding branch. The caller is responsible for protecting the approval ref.
+    Failed publication rolls back the local approval unless the ref has changed.
     """
     repo = repository_root(path)
     record_path = _record_path(branch)
@@ -103,7 +104,20 @@ def start_task(
 
     if publish:
         # Requires a protected server-side approval branch to be meaningful.
-        _git(repo, "push", "origin", f"{APPROVAL_REF}:{APPROVAL_REF}")
+        try:
+            _git(repo, "push", "origin", f"{APPROVAL_REF}:{APPROVAL_REF}")
+        except ContractError as publish_error:
+            try:
+                # Only undo our own update, never a concurrent owner's approval.
+                if previous_ref is None:
+                    _git(repo, "update-ref", "-d", APPROVAL_REF, approved_commit)
+                else:
+                    _git(repo, "update-ref", APPROVAL_REF, previous_ref, approved_commit)
+            except ContractError as rollback_error:
+                raise ContractError(
+                    f"{publish_error}; local approval rollback failed: {rollback_error}"
+                ) from rollback_error
+            raise
     # Never create an agent branch until the approval commit is ready, and
     # published if the caller requested it.
     _git(repo, "switch", "-c", branch, base_sha)
