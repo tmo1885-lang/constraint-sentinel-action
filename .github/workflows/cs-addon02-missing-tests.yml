@@ -1,0 +1,49 @@
+name: CS-ADDON-02 disappeared-test evidence (synthetic, warn-only)
+
+on:
+  pull_request:
+    paths:
+      - "experiments/cs_addon02/**"
+      - "experiments/cs_addon01/**"
+      - "experiments/cs_gap02/**"
+      - ".github/workflows/cs-addon02-missing-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  missing-previous-cases:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, python-version: "3.12"}
+          - {os: windows-latest, python-version: "3.12"}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install exact synthetic test dependency
+        run: python -m pip install --disable-pip-version-check "pytest==9.0.2"
+      - name: R2 previous-case-loss regression tests
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: python -m unittest discover -s experiments/cs_addon02 -p test_missing_previous.py -v
+      - name: Existing CS-GAP-02 R2 classification controls
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: python -m unittest discover -s experiments/cs_gap02 -p test_gap02_experiment.py -q
+      - name: Companion schema/integrity unit tests
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python -m unittest discover -s experiments/cs_addon01 -p test_adapter.py -v
+
+# Synthetic first-party Git fixtures only, no secrets or privileged PR context.
+# A PASS here means expected research classifications, not certified protection.

@@ -29,6 +29,7 @@ def r2(status: str) -> dict:
         "candidate": HEAD,
         "changed_paths": ["tests/test_added.py"],
         "new_case_ids": cases,
+        "previously_collected_cases_missing": [],
         "unexecuted_or_unverified": findings,
     }
 
@@ -106,6 +107,36 @@ class AddonAdapterTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "gate results"):
             combine({"ok": True, "gates": {}}, r2("pass"),
                     base=BASE, head=HEAD, r2_exit=0)
+
+
+    def test_disappeared_previous_cases_remain_review_required(self) -> None:
+        result = r2("unverified")
+        ids = ["tests/test_covered.py::test_required[1]"]
+        result["previously_collected_cases_missing"] = ids
+        result["unexecuted_or_unverified"] = [
+            {"nodeid": ids[0], "reason": "previously_collected_case_missing"}
+        ]
+        combined = combine(aqg(), result, base=BASE, head=HEAD, r2_exit=3)
+        self.assertEqual(combined["review_outcome"], "REVIEW_REQUIRED")
+        self.assertEqual(combined["previously_collected_cases_missing"], ids)
+
+    def test_rejects_fake_no_new_evidence_with_disappeared_case(self) -> None:
+        result = r2("not_applicable")
+        result["previously_collected_cases_missing"] = ["tests/test_lost.py::test_old"]
+        with self.assertRaisesRegex(ValueError, "NOT_APPLICABLE"):
+            combine(aqg(), result, base=BASE, head=HEAD, r2_exit=0)
+
+    def test_rejects_fake_pass_with_disappeared_case(self) -> None:
+        result = r2("pass")
+        result["previously_collected_cases_missing"] = ["tests/test_lost.py::test_old"]
+        with self.assertRaisesRegex(ValueError, "PASS with unresolved"):
+            combine(aqg(), result, base=BASE, head=HEAD, r2_exit=0)
+
+    def test_rejects_missing_prior_collection_inventory(self) -> None:
+        result = r2("pass")
+        result.pop("previously_collected_cases_missing")
+        with self.assertRaisesRegex(ValueError, "previously-collected-case inventory"):
+            combine(aqg(), result, base=BASE, head=HEAD, r2_exit=0)
 
 
 if __name__ == "__main__":
