@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
+from .approval import approve_task, setup_ci
 from .checks import run_checks
 from .contract import ContractError, load_contract
 from .engine import evaluate_scope, make_report
@@ -148,6 +149,23 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     init_parser = sub.add_parser("init", help="Write an example contract (does not overwrite)")
     init_parser.add_argument("--repo", type=Path, default=Path("."))
+    setup_parser = sub.add_parser(
+        "setup", help="Owner: install one-time automatic PR scope check"
+    )
+    setup_parser.add_argument("--repo", type=Path, default=Path("."))
+    approve_parser = sub.add_parser(
+        "approve", help="Owner: approve and commit a task contract before agent work"
+    )
+    approve_parser.add_argument("--repo", type=Path, default=Path("."))
+    approve_parser.add_argument("--task", required=True, help="Short owner-approved task identifier")
+    approve_parser.add_argument("--allow", action="append", required=True,
+                                help="Allowed path/glob (repeat this flag)")
+    approve_parser.add_argument("--protect", action="append", default=[],
+                                help="Explicitly protected path/glob (repeat this flag)")
+    approve_parser.add_argument("--test-path", action="append", default=[],
+                                help="Test path/glob (optional; repeat this flag)")
+    approve_parser.add_argument("--replace", action="store_true",
+                                help="Explicitly replace an existing task contract")
     check_parser = sub.add_parser("check", help="Compare changes against a trusted base contract")
     check_parser.add_argument("--repo", type=Path, default=Path("."))
     check_parser.add_argument("--base", required=True, help="Trusted baseline commit or ref")
@@ -160,7 +178,27 @@ def main(argv: list[str] | None = None) -> int:
     check_parser.add_argument("--format", choices=("text", "json"), default="text")
     args = parser.parse_args(argv)
     try:
-        return init_command(args.repo) if args.command == "init" else check_command(args)
+        if args.command == "init":
+            return init_command(args.repo)
+        if args.command == "setup":
+            commit = setup_ci(args.repo)
+            print(f"Installed Sentinel PR scope workflow in owner commit {commit}")
+            print("Push this commit to the protected PR base branch before agent work.")
+            print("Require the sentinel-scope status check; keep the workflow outside agent control.")
+            return 0
+        if args.command == "approve":
+            base = approve_task(
+                args.repo, task_id=args.task, allow=args.allow,
+                protect=args.protect, test_paths=args.test_path,
+                replace=args.replace,
+            )
+            print(f"Approved task {args.task!r} at Git baseline {base}")
+            print("Push this approved commit to the protected PR base branch before agent work.")
+            print("PR CI can use github.event.pull_request.base.sha automatically.")
+            print(f"Local check: constraint-sentinel check --base {base}")
+            print("IMPORTANT: keep the approved baseline and verifier outside agent control.")
+            return 0
+        return check_command(args)
     except (GitError, ContractError, OSError, UnicodeError, ValueError) as exc:
         print(f"Constraint Sentinel error: {exc}", file=sys.stderr)
         return 2
