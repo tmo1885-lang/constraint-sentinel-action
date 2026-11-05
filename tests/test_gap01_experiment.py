@@ -59,13 +59,13 @@ class TestDiscoveryEvidence(unittest.TestCase):
         path = repo / "tests" / "test_feature.py"
         data = path.read_text(encoding="utf-8")
         if mode == "undiscovered":
-            data += "\n\ndef test_new_requirement():\n    assert True\n"
+            data += "\n\ndef test_new_requirement():\n    assert sum([2, 3]) == 5\n"
         elif mode == "discovered":
             data = data.replace(
                 "        self.assertTrue(True)\n",
                 "        self.assertTrue(True)\n\n"
                 "    def test_new_requirement(self):\n"
-                "        self.assertTrue(True)\n",
+                "        self.assertEqual(sum([2, 3]), 5)\n",
             )
         elif mode == "skipped":
             data = data.replace(
