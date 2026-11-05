@@ -1,6 +1,8 @@
 # What has actually been validated
 
-**Experimental v0.1.0b3 release. This is not a security certification.**
+**Historical experimental v0.1.0b3 release. Research and volunteer beta recruitment paused in November 2026. This is not a security certification, a maintained product, or an invitation for further beta testing.**
+
+The results below are preserved as evidence of specific evaluated behavior; they are not guarantees for arbitrary coding agents or a recommendation to use the beta as an enforcement gate.
 
 ## Validated behavior and provenance
 
