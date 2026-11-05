@@ -63,13 +63,14 @@ class PytestEvidenceTest(unittest.TestCase):
         git(repo, "commit", "-qm", "Candidate added new regression test")
         return repo
 
-    def run_probe(self, repo: Path, *, head: str = "HEAD") -> tuple[int, dict | None, str]:
+    def run_probe(self, repo: Path, *, head: str = "HEAD",
+                  extra: tuple[str, ...] = ()) -> tuple[int, dict | None, str]:
         env = os.environ.copy()
         env["PYTHONDONTWRITEBYTECODE"] = "1"
         env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
         result = subprocess.run(
             [sys.executable, str(PROBE), "--repo", str(repo), "--base", self.base_sha,
-             "--head", head], capture_output=True, text=True, timeout=35, env=env,
+             "--head", head, *extra], capture_output=True, text=True, timeout=60, env=env,
         )
         return (result.returncode, json.loads(result.stdout) if result.stdout.strip() else None,
                 result.stderr)
@@ -127,10 +128,14 @@ class PytestEvidenceTest(unittest.TestCase):
         self.assertEqual(rc, 0, out)
         self.assertIn("1 skipped", out)
         rc, report, stderr = self.run_probe(repo)
-        self.assertEqual(rc, 1, stderr)
-        self.assertEqual(len(report["unexecuted_or_unverified"]), 1)
+        self.assertEqual(rc, 3, stderr)
+        self.assertEqual(report["status"], "unverified")
+        self.assertEqual(len(report["intentionally_skipped_cases"]), 1)
         self.assertEqual(len(report["accepted_new_cases"]), 2)
-        # This might be an intentionally valid platform skip: strict mode false positive.
+        # Intentional skip is unverified execution evidence, not a defect.
+        strict_rc, strict_report, _ = self.run_probe(repo, extra=("--skip-policy", "require"))
+        self.assertEqual(strict_rc, 1)
+        self.assertEqual(strict_report["status"], "fail")
 
     def test_skip_decorator_not_counted_as_execution(self) -> None:
         repo = self.candidate(
@@ -140,8 +145,9 @@ class PytestEvidenceTest(unittest.TestCase):
         rc, out = self.normal_pytest(repo)
         self.assertEqual(rc, 0, out)
         rc, report, stderr = self.run_probe(repo)
-        self.assertEqual(rc, 1, stderr)
-        self.assertEqual(report["unexecuted_or_unverified"][0]["reason"], "no_call_phase")
+        self.assertEqual(rc, 3, stderr)
+        self.assertEqual(report["status"], "unverified")
+        self.assertEqual(report["intentionally_skipped_cases"][0]["phase"], "setup")
 
     def test_xfail_is_executed_not_passing_proof(self) -> None:
         repo = self.candidate(
@@ -160,8 +166,9 @@ class PytestEvidenceTest(unittest.TestCase):
             "    pytest.skip('cannot run')\n"
         )
         rc, report, stderr = self.run_probe(repo)
-        self.assertEqual(rc, 1, stderr)
-        self.assertEqual(report["unexecuted_or_unverified"][0]["reason"], "call_skipped")
+        self.assertEqual(rc, 3, stderr)
+        self.assertEqual(report["status"], "unverified")
+        self.assertEqual(report["intentionally_skipped_cases"][0]["phase"], "call")
 
     def test_collection_import_error_fails_closed(self) -> None:
         repo = self.candidate(
@@ -173,11 +180,16 @@ class PytestEvidenceTest(unittest.TestCase):
         self.assertNotEqual(report["pytest_exit"], 0)
         self.assertTrue(report["collection_errors"])
 
-    def test_no_new_test_definition_fails_policy(self) -> None:
+    def test_no_new_test_definition_requires_explicit_policy(self) -> None:
         repo = self.candidate("# changed this file but added no new test\n")
         rc, report, stderr = self.run_probe(repo)
-        self.assertEqual(rc, 1, stderr)
+        self.assertEqual(rc, 0, stderr)
+        self.assertEqual(report["status"], "not_applicable")
         self.assertEqual(report["new_definitions"], [])
+        strict_rc, strict_report, stderr = self.run_probe(
+            repo, extra=("--require-new-tests",))
+        self.assertEqual(strict_rc, 1, stderr)
+        self.assertEqual(strict_report["status"], "fail")
 
     def test_dirty_candidate_refuses_evidence(self) -> None:
         repo = self.candidate("def test_new():\n    assert 3 > 2\n")
@@ -244,9 +256,42 @@ class PytestEvidenceTest(unittest.TestCase):
         self.assertEqual(rc, 0, output)
         self.assertIn("4 passed", output)
         rc, report, stderr = self.run_probe(repo)
-        self.assertEqual(rc, 1, stderr)
+        self.assertEqual(rc, 0, stderr)
+        self.assertEqual(report["status"], "pass")
         self.assertEqual(report["new_definitions"], [])
-        # Legitimate new parameter instance missed because no new Python def.
+        self.assertEqual(len(report["new_case_ids"]), 1)
+        self.assertTrue(report["new_case_ids"][0].endswith("[3]"))
+        self.assertEqual(len(report["accepted_new_cases"]), 1)
+        # The case itself is new although the function definition is not.
+
+    def test_expanded_existing_parameter_with_skip_is_unverified(self) -> None:
+        old = self.baseline / "tests" / "test_feature.py"
+        old.write_text(
+            "import pytest\n\n@pytest.mark.parametrize('amount', [1, 2])\n"
+            "def test_original_behavior(amount):\n    assert amount > 0\n",
+            encoding="utf-8")
+        git(self.baseline, "add", ".")
+        git(self.baseline, "commit", "-qm", "Preexisting two-parameter matrix")
+        self.base_sha = git(self.baseline, "rev-parse", "HEAD")
+        repo = self.root / "candidate"
+        subprocess.run(["git", "clone", "-q", str(self.baseline), str(repo)],
+                       check=True, timeout=10)
+        git(repo, "config", "user.name", "Gap02 synthetic agent")
+        git(repo, "config", "user.email", "agent@example.invalid")
+        git(repo, "checkout", "-q", "-b", "task/extra-param-skip")
+        path = repo / "tests" / "test_feature.py"
+        path.write_text(
+            path.read_text(encoding="utf-8").replace(
+                "[1, 2]", "[1, 2, pytest.param(3, marks=pytest.mark.skip(reason='platform'))]"),
+            encoding="utf-8")
+        git(repo, "add", ".")
+        git(repo, "commit", "-qm", "Add intentionally skipped parameter")
+        rc, report, stderr = self.run_probe(repo)
+        self.assertEqual(rc, 3, stderr)
+        self.assertEqual(report["status"], "unverified")
+        self.assertEqual(len(report["new_case_ids"]), 1)
+        self.assertEqual(len(report["intentionally_skipped_cases"]), 1)
+        self.assertFalse(report["accepted_new_cases"])
 
     def test_unexpected_xpass_not_treated_as_proven(self) -> None:
         repo = self.candidate(
