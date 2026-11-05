@@ -45,6 +45,7 @@ print("__CS_GAP01_RESULT__" + json.dumps({
     "errors": len(outcome.errors),
     "failures": len(outcome.failures),
     "skips": len(outcome.skipped),
+    "skipped_ids": [test.id() for test, reason in outcome.skipped],
     "loader_errors": loader.errors,
     "successful": outcome.wasSuccessful(),
     "output_excerpt": stream.getvalue()[-2500:],
@@ -130,7 +131,10 @@ def main() -> int:
             raise RuntimeError("unittest evidence subprocess failed or omitted report")
         evidence = json.loads(payloads[0])
         observed = set(evidence["discovered"])
-        missing = sorted(new_tests - observed)
+        skipped_ids = set(evidence["skipped_ids"])
+        # unittest counts skipped tests in testsRun, but their bodies did not execute.
+        executed_ids = observed - skipped_ids
+        missing = sorted(new_tests - executed_ids)
         status = ("pass" if new_tests and not missing
                   and evidence["successful"] and evidence["executed"] > 0
                   and evidence["errors"] == 0 and evidence["failures"] == 0
@@ -149,7 +153,9 @@ def main() -> int:
             "new_test_definitions": sorted(new_tests),
             "new_tests_not_executed": missing,
             "discovered_tests": sorted(observed),
-            "executed_count": evidence["executed"],
+            "skipped_tests": sorted(skipped_ids),
+            "reported_tests_run": evidence["executed"],
+            "executed_count": evidence["executed"] - len(skipped_ids),
             "unittest_success": evidence["successful"],
             "integrity_note": integrity_note,
             "limitations": "unittest-only; AST direct Python test definitions; "
