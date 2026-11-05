@@ -183,6 +183,13 @@ def main() -> int:
         # A new parameter in an existing function is visible as a new node ID.
         added_ids = {n for n in candidate_ids - baseline_ids
                      if n.split("::", 1)[0] in changed_test_paths}
+        # A previously collected test that vanishes is not automatically a
+        # defect (it may be an authorized rename/removal), but an evidence
+        # verifier must not silently describe lost coverage as NOT_APPLICABLE.
+        # Compare the entire collection: changes to pytest.ini, conftest.py,
+        # or collection hooks can remove tests without touching a test file.
+        # Such differences are review warnings, NOT hard enforcement failures.
+        dropped_ids = sorted(baseline_ids - candidate_ids)
         # Catch a newly introduced test function/method even when pytest fails
         # to collect it, and validate every parameterized instance collected.
         expected_ids = added_ids | {
@@ -229,7 +236,9 @@ def main() -> int:
                 or (no_new and args.require_new_tests)
                 or (skips and args.skip_policy == "require")):
             status, rc = "fail", 1
-        elif skips:
+        elif skips or dropped_ids:
+            # A deleted/renamed previously collected case warrants review,
+            # not an automatic claim of a test regression or a passing suite.
             status, rc = "unverified", 3
         elif no_new:
             status, rc = "not_applicable", 0
@@ -246,11 +255,15 @@ def main() -> int:
             "collected_count": len(candidate_ids),
             "new_case_ids": sorted(added_ids),
             "verified_case_ids": sorted(expected_ids),
+            "previously_collected_cases_missing": dropped_ids,
             "pytest_exit": event["pytest_exit"],
             "collection_errors": event["collection_errors"],
             "accepted_new_cases": accepted,
             "intentionally_skipped_cases": skips,
-            "unexecuted_or_unverified": failures + skips,
+            "unexecuted_or_unverified": (failures + skips + [
+                {"nodeid": n, "reason": "previously_collected_case_missing"}
+                for n in dropped_ids
+            ]),
             "skip_policy": args.skip_policy,
             "require_new_tests": args.require_new_tests,
             "scope": "pytest-only synthetic test identity witness; no sandbox; no correctness proof",

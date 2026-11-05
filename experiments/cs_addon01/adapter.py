@@ -42,10 +42,13 @@ def combine(aqg: dict, r2: dict, *, base: str, head: str, r2_exit: int) -> dict:
         raise ValueError("R2 missing new-case inventory")
     if not isinstance(r2.get("unexecuted_or_unverified"), list):
         raise ValueError("R2 missing incomplete-case inventory")
-    if status == "pass" and r2["unexecuted_or_unverified"]:
+    dropped = r2.get("previously_collected_cases_missing")
+    if not isinstance(dropped, list):
+        raise ValueError("R2 missing previously-collected-case inventory")
+    if status == "pass" and (r2["unexecuted_or_unverified"] or dropped):
         raise ValueError("R2 claims PASS with unresolved cases")
-    if status == "not_applicable" and r2["new_case_ids"]:
-        raise ValueError("R2 claims NOT_APPLICABLE with newly added test cases")
+    if status == "not_applicable" and (r2["new_case_ids"] or dropped):
+        raise ValueError("R2 claims NOT_APPLICABLE with changed execution coverage")
     aqg_status = "PASS" if aqg["ok"] else "FAIL"
     r2_status = R2_LABELS[status]
     return {
@@ -72,6 +75,7 @@ def combine(aqg: dict, r2: dict, *, base: str, head: str, r2_exit: int) -> dict:
         },
         "new_case_count": len(r2["new_case_ids"]),
         "new_case_ids": r2["new_case_ids"],
+        "previously_collected_cases_missing": dropped,
         "unexecuted_or_unverified": r2["unexecuted_or_unverified"],
         "task_completion": "NOT_VERIFIED",
         "limitations": (
