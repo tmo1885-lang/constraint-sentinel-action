@@ -67,6 +67,14 @@ class TestDiscoveryEvidence(unittest.TestCase):
                 "    def test_new_requirement(self):\n"
                 "        self.assertTrue(True)\n",
             )
+        elif mode == "skipped":
+            data = data.replace(
+                "        self.assertTrue(True)\n",
+                "        self.assertTrue(True)\n\n"
+                "    @unittest.skip('synthetic skipped test')\n"
+                "    def test_new_requirement(self):\n"
+                "        self.fail('should never execute')\n",
+            )
         elif mode == "renamed":
             data = data.replace("def test_existing_feature(self):",
                                 "def test_new_requirement(self):")
@@ -118,6 +126,19 @@ class TestDiscoveryEvidence(unittest.TestCase):
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["new_tests_not_executed"], [])
         self.assertEqual(report["executed_count"], 3)
+
+    def test_skipped_new_test_is_not_execution_evidence(self) -> None:
+        repo = self.candidate("skipped")
+        exit_code, output = self.normal_count(repo)
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Ran 3 tests", output)
+        self.assertIn("skipped=1", output)
+        rc, report = self.probe(repo)
+        self.assertEqual(rc, 1)
+        self.assertEqual(report["status"], "fail")
+        self.assertEqual(len(report["new_tests_not_executed"]), 1)
+        self.assertEqual(len(report["skipped_tests"]), 1)
+        self.assertEqual(report["executed_count"], 2)
 
     def test_valid_test_rename_does_not_require_count_growth(self) -> None:
         repo = self.candidate("renamed")
