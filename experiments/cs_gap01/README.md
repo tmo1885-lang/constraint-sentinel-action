@@ -52,9 +52,20 @@ A skipped new test is **not** treated as execution evidence; `unittest` includes
 - Proof that the executed test used the expected runtime dependencies or that other modules were not changed by side effects. The probe rechecks visible Git status, but does not monitor external effects.
 - General accuracy or false-positive rates. We tested only a small set of deliberately designed cases.
 
+## Direct comparison: Proof of Done v0.5.0
+
+On the **local primary Signals-style reconstruction** (with meaningful assertions in its new test, not the literal vacuous `assert True` form), we installed `proof-of-done@0.5.0` into a disposable external directory with npm lifecycle scripts disabled. Using the same exact original base commit and each candidate head, `proof-of-done verify --base <base-sha> --json` returned:
+
+| Candidate | Proof of Done | Existing Sentinel | CS-GAP-01 |
+| --- | --- | --- | --- |
+| New test function undiscovered by `unittest` | PASS, 0 findings, 2 files checked | PASS, no scope violations | **FAIL** — new test not executed |
+| Corrected discoverable `unittest.TestCase` method | PASS, 0 findings, 2 files checked | PASS, no scope violations | PASS |
+
+This is **one pinned-version, one-fixture comparison**, not evidence that Proof of Done generally lacks test integrity detection. Its other rules already target skipped, deleted, weakened and vacuous tests, and the primary local reconstruction cannot be byte-for-byte reproduced from this public branch because it used an internal source-only candidate. The public synthetic controls use similarly meaningful assertions to avoid conflating nondiscovery with an assertion-quality finding.
+
 ## Competitor and minimal-CI comparison still required
 
-This is a **gap in current Sentinel**, not a proven gap in other open-source tools. [Proof of Done](https://github.com/wasaybuilds/proof-of-done) already checks several test-integrity patterns including skips and vacuous assertions. [trustbut](https://github.com/isAlmogK/trustbut) runs supported test suites from clean checkouts, compares test behavior across base/head, and reports skipped or unproven changes. This experiment has **not** executed either competitor on the same `unittest` fixtures. Project-specific CI could also assert expected test IDs and thus reproduce the same result without adding a Sentinel subsystem.
+This is a **gap in current Sentinel**, not a proven gap in other open-source tools. [Proof of Done](https://github.com/wasaybuilds/proof-of-done) already checks several test-integrity patterns including skips and vacuous assertions. [trustbut](https://github.com/isAlmogK/trustbut) runs supported test suites from clean checkouts, compares test behavior across base/head, and reports skipped or unproven changes. Proof of Done v0.5.0 **was executed** on the local primary reconstructed fixture above, but trustbut was **not executed** on that fixture. Project-specific CI could also assert expected test IDs and thus reproduce the same result without adding a Sentinel subsystem.
 
 **Disposition:** candidate for an opt-in evidence-discovery integration, subject to comparison against trivial project-specific CI that explicitly asserts expected test identity. **Do not merge as a mandatory gate** until representative projects, runners, failure modes and developer setup friction justify it.
 
