@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 
 
 # Executed in a separate interpreter with Python isolation enabled. Pytest
@@ -25,6 +26,8 @@ import sys
 import pytest
 
 root = Path(sys.argv[1]).resolve()
+mode = sys.argv[2]
+assert mode in ("run", "collect")
 os.chdir(root)
 sys.path[:0] = [str(root), str(root / "src")]
 
@@ -50,12 +53,15 @@ class Recorder:
             "phase": report.when,
             "outcome": report.outcome,
             "wasxfail": str(wasxfail) if wasxfail else None,
+            "skip_reason": str(report.longrepr)[-500:] if report.outcome == "skipped" else None,
         })
 
 witness = Recorder()
 # Do not load third-party site-wide pytest plugins; the project's own
 # conftest.py can still run and must be treated as untrusted candidate code.
-code = pytest.main(["-q", "-p", "no:cacheprovider", "tests"], plugins=[witness])
+code = pytest.main(["-q", "-p", "no:cacheprovider"] +
+                   (["--collect-only"] if mode == "collect" else []) +
+                   ["tests"], plugins=[witness])
 print("__CS_GAP02_RESULT__" + json.dumps({
     "pytest_exit": int(code),
     "collected": witness.collected,
@@ -91,12 +97,48 @@ def extract_new_defs(source: bytes | None, path: str) -> set[str]:
     return identities
 
 
+def _run_pytest(repo: Path, mode: str, env: dict[str, str]) -> dict:
+    result = subprocess.run(
+        [sys.executable, "-I", "-B", "-c", RUNNER, str(repo), mode],
+        cwd=repo, env=env, capture_output=True, text=True, timeout=45,
+    )
+    marker = "__CS_GAP02_RESULT__"
+    payloads = [line[len(marker):] for line in result.stdout.splitlines()
+                if line.startswith(marker)]
+    if result.returncode or len(payloads) != 1:
+        raise RuntimeError(f"pytest {mode} witness failed or report missing: "
+                           + result.stderr[-250:])
+    return json.loads(payloads[0])
+
+
+def _baseline_checkout(repo: Path, base: str, directory: Path) -> Path:
+    # Independent temporary checkout: baseline collection must not run against
+    # the candidate tree or mutate the accepted source. Not an OS sandbox.
+    dest = directory / "baseline"
+    for argv in (["git", "clone", "--quiet", "--no-local", "--no-checkout",
+                  str(repo), str(dest)],
+                 ["git", "-C", str(dest), "checkout", "--quiet", "--detach", base]):
+        proc = subprocess.run(argv, capture_output=True, timeout=25, check=False)
+        if proc.returncode:
+            raise RuntimeError("Baseline checkout unavailable: "
+                               + proc.stderr[-200:].decode("utf-8", "replace"))
+    return dest
+
+
+def _def_for_case(nodeid: str) -> str:
+    return nodeid.split("[", 1)[0]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", required=True, type=Path)
     parser.add_argument("--base", required=True)
     parser.add_argument("--head", required=True)
     parser.add_argument("--report", type=Path)
+    parser.add_argument("--skip-policy", choices=("warn", "require"), default="warn",
+                        help="warn: explicit UNVERIFIED (exit 3) instead of FAIL for skips")
+    parser.add_argument("--require-new-tests", action="store_true",
+                        help="FAIL if no new pytest case identities or test definitions")
     args = parser.parse_args()
     repo = args.repo.resolve()
 
@@ -113,83 +155,111 @@ def main() -> int:
 
         changed = git(repo, "diff", "--name-only", "--no-ext-diff", "-z", base, head)
         paths = [p.decode("utf-8") for p in changed.split(b"\0") if p]
-        new = set()
-        for path in paths:
-            if (Path(path).parts[:1] == ("tests",) and Path(path).name.startswith("test_")
-                    and path.endswith(".py")):
-                before = git(repo, "show", f"{base}:{path}", optional=True)
-                after = git(repo, "show", f"{head}:{path}", optional=True)
-                new.update(extract_new_defs(after, path) - extract_new_defs(before, path))
+        changed_test_paths = {
+            p for p in paths if Path(p).parts[:1] == ("tests",)
+            and Path(p).name.startswith("test_") and p.endswith(".py")
+        }
+        new_defs: set[str] = set()
+        for path in changed_test_paths:
+            before = git(repo, "show", f"{base}:{path}", optional=True)
+            after = git(repo, "show", f"{head}:{path}", optional=True)
+            new_defs.update(extract_new_defs(after, path) - extract_new_defs(before, path))
 
-        # Failing when zero NEW test identities are added is intentional for
-        # this declared 'add a regression test' experimental policy.
         env = os.environ.copy()
         for key in list(env):
             if any(s in key.upper() for s in ("TOKEN", "SECRET", "PASSWORD", "API_KEY")):
                 env.pop(key, None)
         env["PYTHONDONTWRITEBYTECODE"] = "1"
         env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
-        result = subprocess.run([sys.executable, "-I", "-B", "-c", RUNNER, str(repo)],
-                                cwd=repo, env=env, capture_output=True, text=True, timeout=45)
-        marker = "__CS_GAP02_RESULT__"
-        payloads = [line[len(marker):] for line in result.stdout.splitlines() if line.startswith(marker)]
-        if result.returncode or len(payloads) != 1:
-            raise RuntimeError("pytest subprocess did not produce exactly one witness report; "
-                               + result.stderr[-250:])
-        event = json.loads(payloads[0])
-        collected = event["collected"]
-        events = event["events"]
-        grouped = {}
-        for item in collected:
-            simple = item.split("[", 1)[0]
-            grouped.setdefault(simple, []).append(item)
+        with tempfile.TemporaryDirectory(prefix="cs-gap02-baseline-") as tmp:
+            baseline_repo = _baseline_checkout(repo, base, Path(tmp))
+            baseline_event = _run_pytest(baseline_repo, "collect", env)
+        if (baseline_event["pytest_exit"] != 0
+                or baseline_event["collection_errors"]):
+            raise RuntimeError("baseline pytest collection failed; cannot compare cases")
+        event = _run_pytest(repo, "run", env)
+        baseline_ids = set(baseline_event["collected"])
+        candidate_ids = set(event["collected"])
+        # A new parameter in an existing function is visible as a new node ID.
+        added_ids = {n for n in candidate_ids - baseline_ids
+                     if n.split("::", 1)[0] in changed_test_paths}
+        # Catch a newly introduced test function/method even when pytest fails
+        # to collect it, and validate every parameterized instance collected.
+        expected_ids = added_ids | {
+            nodeid for nodeid in candidate_ids
+            if _def_for_case(nodeid) in new_defs
+        }
+        missing_defs = sorted(d for d in new_defs
+                              if not any(_def_for_case(n) == d
+                                         for n in candidate_ids))
 
-        incomplete = []
-        accepted = []
-        for definition in sorted(new):
-            nodeids = grouped.get(definition, [])
-            if not nodeids:
-                incomplete.append({"definition": definition, "reason": "not_collected"})
-                continue
-            for nodeid in nodeids:
-                phases = [e for e in events if e["nodeid"] == nodeid]
-                call = [e for e in phases if e["phase"] == "call"]
-                if not call:
-                    incomplete.append({"definition": definition, "nodeid": nodeid,
-                                       "reason": "no_call_phase"})
-                elif call[0]["outcome"] == "passed" and not call[0]["wasxfail"]:
-                    accepted.append({"nodeid": nodeid, "category": "call_passed"})
-                elif call[0]["outcome"] == "skipped" and call[0]["wasxfail"]:
-                    # XFAIL was executed, but is not evidence of a passing assertion.
-                    accepted.append({"nodeid": nodeid, "category": "expected_failure_executed"})
+        events_by_id: dict[str, list[dict]] = {}
+        for entry in event["events"]:
+            events_by_id.setdefault(entry["nodeid"], []).append(entry)
+        accepted: list[dict] = []
+        skips: list[dict] = []
+        failures: list[dict] = [
+            {"definition": d, "reason": "not_collected"} for d in missing_defs
+        ]
+        for nodeid in sorted(expected_ids):
+            phases = events_by_id.get(nodeid, [])
+            calls = [e for e in phases if e["phase"] == "call"]
+            if calls and calls[0]["outcome"] == "passed" and not calls[0]["wasxfail"]:
+                accepted.append({"nodeid": nodeid, "category": "call_passed"})
+            elif calls and calls[0]["outcome"] == "skipped" and calls[0]["wasxfail"]:
+                accepted.append({"nodeid": nodeid, "category": "expected_failure_executed"})
+            else:
+                skip_event = next((e for e in phases if e["outcome"] == "skipped"
+                                   and not e["wasxfail"]), None)
+                if skip_event:
+                    skips.append({"nodeid": nodeid, "reason": "intentionally_skipped",
+                                  "phase": skip_event["phase"],
+                                  "explanation": skip_event.get("skip_reason")})
                 else:
-                    incomplete.append({"definition": definition, "nodeid": nodeid,
-                                       "reason": "call_" + call[0]["outcome"],
-                                       "wasxfail": call[0]["wasxfail"]})
+                    call = calls[0] if calls else None
+                    failures.append({"nodeid": nodeid,
+                                     "reason": ("call_" + call["outcome"]
+                                                if call else "no_call_phase"),
+                                     "wasxfail": call["wasxfail"] if call else None})
 
         if git(repo, "status", "--porcelain", "-z"):
             raise RuntimeError("candidate worktree changed during pytest execution")
-        status = ("pass" if new and not incomplete and event["pytest_exit"] == 0
-                  and not event["collection_errors"] else "fail")
+        no_new = not expected_ids and not new_defs
+        if (failures or event["pytest_exit"] != 0 or event["collection_errors"]
+                or (no_new and args.require_new_tests)
+                or (skips and args.skip_policy == "require")):
+            status, rc = "fail", 1
+        elif skips:
+            status, rc = "unverified", 3
+        elif no_new:
+            status, rc = "not_applicable", 0
+        else:
+            status, rc = "pass", 0
         report = {
-            "experiment": "CS-GAP-02",
+            "experiment": "CS-GAP-02-R2",
             "status": status,
             "base": base,
             "candidate": head,
             "changed_paths": paths,
-            "new_definitions": sorted(new),
-            "collected_count": len(collected),
+            "new_definitions": sorted(new_defs),
+            "baseline_collected_count": len(baseline_ids),
+            "collected_count": len(candidate_ids),
+            "new_case_ids": sorted(added_ids),
+            "verified_case_ids": sorted(expected_ids),
             "pytest_exit": event["pytest_exit"],
             "collection_errors": event["collection_errors"],
             "accepted_new_cases": accepted,
-            "unexecuted_or_unverified": incomplete,
+            "intentionally_skipped_cases": skips,
+            "unexecuted_or_unverified": failures + skips,
+            "skip_policy": args.skip_policy,
+            "require_new_tests": args.require_new_tests,
             "scope": "pytest-only synthetic test identity witness; no sandbox; no correctness proof",
         }
         encoded = json.dumps(report, sort_keys=True, indent=2)
         print(encoded)
         if args.report:
             args.report.write_text(encoded + "\n", encoding="utf-8")
-        return 0 if status == "pass" else 1
+        return rc
     except (OSError, ValueError, RuntimeError, SyntaxError, subprocess.TimeoutExpired,
             UnicodeError, json.JSONDecodeError) as exc:
         print("CS-GAP-02 evidence unavailable: " + str(exc)[:500], file=sys.stderr)
