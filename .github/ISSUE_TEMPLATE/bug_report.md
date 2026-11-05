@@ -6,7 +6,7 @@ labels: []
 assignees: []
 ---
 
-**Please report synthetic data only. For sensitive vulnerabilities, see SECURITY.md.**
+**Research paused; beta recruitment closed.** This template is reserved for factual inaccuracies or reproducible defects in the historical research record, not new beta participation or feature requests. **Please use synthetic data only. For sensitive vulnerabilities, see SECURITY.md.**
 
 - Beta version / commit SHA:
 - Python and Git versions:

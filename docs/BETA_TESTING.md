@@ -1,10 +1,10 @@
-# Volunteer beta testing — your feedback is welcome
+# Historical volunteer beta testing guide — recruitment closed
 
-**Status:** Public experimental beta, currently **v0.1.0b3** ([release](https://github.com/tmo1885-lang/constraint-sentinel-action/releases/tag/v0.1.0b3)). Please use only a disposable, non-sensitive test repository. The published beta requires a *precommitted owner task contract*; the lower-friction task commands in draft PRs #8/#9 are **not part of this release**.
+**Status (November 2026): Research paused; volunteer beta recruitment closed.** This document preserves the historical evaluation procedure; it is **not a current invitation to test**, and no maintenance or feedback-response commitment is offered. The last released experimental beta was **v0.1.0b3** ([release](https://github.com/tmo1885-lang/constraint-sentinel-action/releases/tag/v0.1.0b3)). It requires a *precommitted owner task contract*; the lower-friction task commands in draft PRs #8/#9 are **not part of this release**. Never use the historical beta as a production security gate.
 
-We are looking for developers who already use Copilot, Codex, Claude Code or another AI coding assistant. The goal is to find problems, not gather endorsements.
+During the volunteer beta, we invited developers using Copilot, Codex, Claude Code, and other coding assistants to report reproducible problems, including negative findings. That recruitment has ended.
 
-## A safe 15–30 minute evaluation
+## Historical 15–30 minute evaluation procedure
 
 1. Use a **disposable, non-sensitive Git repository** with no confidential code, credentials, customer data or production access.
 2. Start with a simple, useful task (e.g. refactor a calculation, update a harmless utility, or add tests).
@@ -12,7 +12,7 @@ We are looking for developers who already use Copilot, Codex, Claude Code or ano
 4. Ask your normal coding agent to make the change.
 5. Run Sentinel against that same approved baseline SHA and record whether it correctly classified the resulting edits.
 6. Try a deliberately unauthorized edit in a **separate disposable fixture** to see whether your setup catches it. Do not test on real sensitive files.
-7. Report any false positives, false negatives, setup problems or unclear explanations.
+7. Historically, participants documented false positives, false negatives, setup problems and unclear explanations. The recruitment period has now ended.
 
 You can also test without a coding agent using a disposable Git repository and the [README's approved task-contract example](../README.md#quick-start-github-actions).
 
@@ -24,7 +24,7 @@ You can also test without a coding agent using a disposable Git repository and t
 - Expect some setup time: you must select allowed paths, commit the contract **before** agent edits, and keep the baseline SHA independently. Please report whether this effort was worthwhile even if Sentinel reports PASS.
 - The simpler `task start` / task-approval ledger and automatic protected-PR prototype are under review in [PR #9](https://github.com/tmo1885-lang/constraint-sentinel-action/pull/9). They are **unreleased and not approved for multi-writer security enforcement**.
 
-## Questions we'd like answered
+## Questions used in the beta evaluation
 
 - Which coding agent, programming language and operating system did you use?
 - How long did installation and task-contract setup take?
@@ -36,12 +36,10 @@ You can also test without a coding agent using a disposable Git repository and t
 
 **Do not upload raw prompts, complete private code, credentials, employee data, customer information, or private repository addresses.** File paths and worktree reports may disclose project details: redact them before sharing.
 
-### Volunteer terms
+### Historical volunteer terms
 
-Participation is voluntary. No paid compensation is being offered or promised. You can stop at any point, and negative feedback is as valuable as praise. We may summarize anonymous feedback in development notes; we will not publicly attribute your comments without asking.
+Participation during the beta was voluntary and unpaid. Negative findings were welcomed, and developers were cautioned not to submit private or identifying material. No commercial maintenance or support commitment emerged from the evaluation.
 
-This is early-stage research. We cannot promise that reported issues will be fixed or that the tool will become a maintained commercial product.
+## Closed recruitment and historical results
 
-## Where to submit results
-
-Use the [public beta feedback issue](https://github.com/tmo1885-lang/constraint-sentinel-action/issues/1) or the [GitHub issue templates](https://github.com/tmo1885-lang/constraint-sentinel-action/issues/new/choose). For potentially sensitive vulnerabilities, follow [SECURITY.md](../SECURITY.md) rather than posting exploit details. Do not request access to private engineering or research repositories.
+The [beta feedback issue #1](https://github.com/tmo1885-lang/constraint-sentinel-action/issues/1) is closed to new recruitment and retained for provenance. The project remains public as a research record; we are **not requesting new beta evaluations or promising future development**. If you identify a potentially sensitive vulnerability, follow [SECURITY.md](../SECURITY.md) rather than posting exploit details. Do not request access to private engineering or research repositories.

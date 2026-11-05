@@ -1,18 +1,18 @@
-# Contributing and testing
+# Contributing (historical research repository)
 
-This is an **experimental beta**, seeking reproducible feedback. Most helpful contributions are narrowly scoped: a failing synthetic Git fixture, confusing report, legitimate false positive, or safe improvement to installation.
+**Development paused; beta recruitment closed (November 2026).** Constraint Sentinel is preserved as a public experimental research record, not an actively maintained product or volunteer testing program. We are **not asking for new beta trials, feature proposals, or adoption reports**. Existing work and negative findings remain available for reproducibility. No issue response, fix, or PR review turnaround is guaranteed.
 
 Before opening an issue, please check existing reports. Never include production secrets, private repository names, proprietary code, or exploit details in public Issues.
 
-## Reproducing failures
+## Reproducing historical failures
 
-Use Python 3.11+ and Git, from a trusted checkout:
+If independently examining the published research, use Python 3.11+ and Git, from a trusted checkout in a disposable environment:
 
 ~~~sh
 PYTHONPATH=src python3 -m unittest discover -s tests -q
 ~~~
 
-Each regression test must use a disposable Git repository. For a bug, please describe expected versus actual results and provide a minimal **synthetic** reproduction that does not depend on private infrastructure.
+Each regression test must use a disposable Git repository. Historical inaccuracies can be reported with a minimal **synthetic** reproduction that does not depend on private infrastructure; please do not interpret this as an invitation to join an ongoing beta.
 
 ## Expectations
 
@@ -29,4 +29,4 @@ Follow [SECURITY.md](SECURITY.md); do not post exploit details publicly.
 
 ## Project status
 
-The maintainers may not accept every contribution, guarantee response times, or develop a paid version. Participation is voluntary. Contributions should be made as issues or pull requests in this public distribution repository, never by requesting access to private Velorin research repositories.
+The maintainers have paused active development and are not recruiting volunteers. Factual corrections to the public research record may be considered without any promise of review or implementation. Do not request access to private Velorin research repositories. For security-sensitive reports, follow [SECURITY.md](SECURITY.md).
