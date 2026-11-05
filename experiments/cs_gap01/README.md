@@ -52,6 +52,10 @@ A skipped new test is **not** treated as execution evidence; `unittest` includes
 - Proof that the executed test used the expected runtime dependencies or that other modules were not changed by side effects. The probe rechecks visible Git status, but does not monitor external effects.
 - General accuracy or false-positive rates. We tested only a small set of deliberately designed cases.
 
+## Competitor and minimal-CI comparison still required
+
+This is a **gap in current Sentinel**, not a proven gap in other open-source tools. [Proof of Done](https://github.com/wasaybuilds/proof-of-done) already checks several test-integrity patterns including skips and vacuous assertions. [trustbut](https://github.com/isAlmogK/trustbut) runs supported test suites from clean checkouts, compares test behavior across base/head, and reports skipped or unproven changes. This experiment has **not** executed either competitor on the same `unittest` fixtures. Project-specific CI could also assert expected test IDs and thus reproduce the same result without adding a Sentinel subsystem.
+
 **Disposition:** candidate for an opt-in evidence-discovery integration, subject to comparison against trivial project-specific CI that explicitly asserts expected test identity. **Do not merge as a mandatory gate** until representative projects, runners, failure modes and developer setup friction justify it.
 
 See the existing [DIY-versus-Sentinel R1 comparison](https://github.com/tmo1885-lang/Constraint-Sentinel/blob/main/comparison/diy/RESULTS-R1.md) for why reproducible scope verification alone is not a differentiated product.
