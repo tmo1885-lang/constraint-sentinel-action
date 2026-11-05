@@ -45,6 +45,18 @@ Sixteen focused synthetic regression controls passed as tests of *the probe's ex
 
 **One illustrative timing run, not a performance benchmark:** ordinary `pytest -q`: 1.76 s; `pytest --collect-only -q`: 1.67 s; test-reachability probe (including pytest): 3.03 s. These samples are not matched production workloads; no general overhead estimate can be inferred.
 
+## Pinned competitor comparison: Proof of Done 0.5.0
+
+A separate **Windows Python 3.12 / Git 2.55** offline synthetic repository was frozen at base `9b53b04a326e82f3190e97b9f59fd2a08775e839`. Using an already-installed external `proof-of-done@0.5.0` CLI, `proof-of-done verify --base <base> --json` produced:
+
+| Synthetic pytest case | Proof of Done 0.5.0 | CS-GAP-02 |
+| --- | --- | --- |
+| New `test_*` method in a non-pytest-collectible class | **PASS**, 0 findings, 1 file checked | **FAIL** — method not collected |
+| New `test_*` method in a collectible `Test*` class | PASS, 0 findings, 1 file checked | PASS |
+| New 3-case parametrized test, 1 intentionally skipped | **PASS**, 0 findings, 1 file checked | **FAIL** — missing execution for skipped parameter |
+
+These are selected independent synthetic cases, **not** a security assessment or general accuracy claim about Proof of Done. The intentionally skipped parameter is ambiguous: it demonstrates CS-GAP-02's stricter execution requirement, but may be an **undesirable false alarm** for the developer. For this reason, a zero-findings Proof of Done result is not automatically a defect in that tool. The decisive first case does represent a missed new-test execution in the tested configuration.
+
 ## Interpretation and design implications
 
 - A successful pytest command and even a successful `--collect-only` command can coexist with an *unexpectedly undiscovered new test*. A source-diff-to-execution-ID comparison catches it.
