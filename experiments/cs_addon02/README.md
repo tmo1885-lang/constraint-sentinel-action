@@ -38,9 +38,9 @@ Real-project corrected replay: **272 baseline → 269 candidate**, 3 exact missi
 
 ## Material limitations / remaining failure-register items
 
-1. **ADDON02-001 (corrected narrowly):** lost test identities were silently ignored. The repair operates only on changed test files and signals uncertainty; it does not establish whether a removal is authorized.
+1. **ADDON02-001 (corrected narrowly):** lost test identities were silently ignored. R2 now compares all baseline/candidate pytest case IDs and signals uncertainty; it does not establish whether a removal is authorized.
 2. **ADDON02-002 (unresolved):** legitimate test renames, intentional removal, changing parameter IDs, and environment-specific parametrization can yield **UNVERIFIED** warnings. A source-identity transition or owner approval policy might reduce these warnings, but must be qualified before enforcement.
-3. **ADDON02-003 (unresolved):** changed `conftest.py`, pytest configuration, plugin behavior or other files may change collection without editing the test module itself. The current changed-test-file filter may miss such losses; do not treat this as comprehensive test coverage monitoring.
+3. **ADDON02-003 (corrected for static pytest.ini, broader case unqualified):** a controlled `pytest.ini` change made three unchanged-file test cases disappear while pytest still passed. A targeted regression initially reproduced **NOT_APPLICABLE**; the full collection diff now reports **UNVERIFIED**. Arbitrary `conftest.py`, third-party plugins, dynamic test generation and environment-dependent collection remain unqualified.
 4. **ADDON02-004 (unresolved):** dynamic or unstable generated node IDs, third-party plugins, mixed runners and cross-platform collection differences are not fully supported.
 5. **ADDON02-005 (unresolved, security):** candidate test code executes in a subprocess, **not an OS sandbox**. This research workflow is safe only for disposable first-party synthetic inputs, read-only unprivileged CI and no secrets.
 6. **ADDON02-006 (economic):** a tiny project-specific expected-test-ID check detected the same previously qualified omission/skip cases with less overhead when the required test identity was known. No evidence yet that automatic discovery justifies a general-purpose integration.

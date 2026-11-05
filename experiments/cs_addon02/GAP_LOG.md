@@ -1,46 +1,71 @@
-# CS-ADDON-02 — evidence gap register and correction
+# CS-ADDON-02 - additive failure register
 
-**Status:** experimental, draft-only, warn-only. This add-on study is stacked on CS-ADDON-01 draft PR #13 and CS-GAP-02 R2 draft PR #12. No merge, AQG fork/upstream modification, production deployment, released Sentinel beta change, privileged CI gate, or autonomous coding-agent trial.
+**Research only. No merge, release, production enforcement, or AQG upstream changes.**
+This experiment is stacked on the CS-ADDON-01 draft PR #13 and R2 draft PR #12.
+Changes are limited to the external experimental R2 verifier, independent adapter,
+disposable synthetic regression tests and read-only research CI.
 
-## Register
+## Registered findings
 
-| ID | Severity | Evidence class | Observed behavior | Outcome | Disposition |
-| --- | --- | --- | --- | --- | --- |
-| ADDON02-001 | High evidence-integrity gap | **False negative** | Existing parametrized test ceases collection on code change; pytest passes, R2 says `NOT_APPLICABLE` | **Repaired in this research branch** | Warn-only `UNVERIFIED` with exact missing case IDs; not assumed misconduct |
-| ADDON02-002 | Moderate operational limitation | Potential false positive | Valid test rename/migration makes old pytest IDs disappear | **Measured, not eliminated** | Flag for review as `UNVERIFIED`, never automatically FAIL; approval policy needed |
-| ADDON02-003 | Moderate portability uncertainty | Unqualified | Dynamic/unstable generated pytest IDs, plugins or different collectors may produce spurious additions/removals | **Unknown** | Do not enforce; needs representative third-party trials |
-| ADDON02-004 | High trust limitation | Unqualified security | Both baseline collection and candidate execution run repository code; Python subprocess/environment filtering is **not** sandboxing | **Unresolved by design** | Never run with privileged `pull_request_target`, production secrets or untrusted code on protected machines |
-| ADDON02-005 | Product differentiation | Competitive finding | Tiny project-specific CI with predeclared test IDs caught the same selected new-test omission faster | **No unique value demonstrated** | Test whether automatic source-to-case discovery actually saves maintenance/reviewer time in natural agent work |
+| ID | Class | Reproduced observation | Current disposition |
+| --- | --- | --- | --- |
+| ADDON02-001 | False negative, high | Three existing parametrized tests vanish from a *changed test file* while pytest exits successfully; R2 returned NOT_APPLICABLE | **Corrected:** compare all baseline/head collected IDs; report UNVERIFIED and missing IDs |
+| ADDON02-002 | False-positive risk | Legitimate test rename or approved test deletion also removes old IDs | **Open by design:** UNVERIFIED for human review, not automatic FAIL; an explicit authorized-rename/removal policy remains unqualified |
+| ADDON02-003 | False negative, moderate | Changing only `pytest.ini` hides three tests from unchanged files, with normal pytest still passing; the changed-test-file filter returned NOT_APPLICABLE | **Corrected in this research branch:** full base/head collection comparison; synthetic red-to-green regression confirms UNVERIFIED |
+| ADDON02-004 | Portability uncertainty | Unstable/generated node IDs, plugins, xdist, conftest and mixed runners may cause noisy collection differences | **Unqualified:** remain warn-only and measure false alarms on representative tasks |
+| ADDON02-005 | Security / trust limitation | Baseline collection and candidate execution run project Python code | **Unresolved:** Python subprocess is not an OS sandbox; only synthetic first-party inputs on unprivileged no-secrets workers |
+| ADDON02-006 | Incremental product value | Tiny expected-test-ID CI can detect the original selected omission/skip at lower execution cost | **Unproven:** automatic derivation must save human configuration/review effort to justify additional complexity |
 
-## Reproduction: first-party Gap Radar
+## Real project reproduction (Nov 5, 2026)
 
-- Repository: [Velorin Gap Radar](https://github.com/tmo1885-lang/velorin-gap-radar), frozen original `main` at `479818484beb4c482315e118df375888e3a72d3c`.
-- Actual unmodified baseline: **272 collected pytest cases** in Windows Python 3.12 / pytest 9.2.0.
-- Controlled, **synthetic** edit on a disposable checkout: rename `tests/test_a0_r2.py::test_old_ambiguous_r1_labels_are_invalid` so its `test_` prefix is lost. Three existing parameter cases `ALLOW`, `HALT`, `STOP` silently stop being collected, leaving **269** cases. The original repository and disposable candidate are clean afterward.
-- Exact local candidate Git SHA `c6cc772eae3a494de6abf9d6595f5ef46e73231d`. No spontaneous coding-agent mistake is claimed.
-- **Previous R2 (before repair):** exit 0, status `NOT_APPLICABLE`, new definitions 0, new case IDs 0, no incomplete evidence, despite 272 → 269 collection.
-- **Repaired R2:** exit 3, `UNVERIFIED`, records the **three exact disappeared case IDs**, each marked `previously_collected_case_missing`; baseline 272 → candidate 269.
-- **External AQG composition:** pinned AQG `d3e7e466d784f25e5ccf9488a8749bd6c9851743` still passes its four authored-evidence gates. Standalone adapter now emits `AQG PASS / Sentinel UNVERIFIED / REVIEW_REQUIRED` with three missing cases and `WARN_ONLY=true`.
+Velorin Gap Radar `main` exact original SHA:
+`479818484beb4c482315e118df375888e3a72d3c`.
+In a disposable Windows Python 3.12 / pytest 9.2.0 local clone, deliberately
+changed an existing `test_` function to stop pytest discovering it. This was a
+controlled QA edit, **not** a spontaneous coding-agent error.
 
-The prior R2 was designed principally for *new* tests. This is not a claim that every disappearing test is a software bug. However, describing a loss of previously collected coverage as `NOT_APPLICABLE` hides relevant evidence. The correction makes the change reviewable without making an intentional test rename or removal an automatic failure.
+- Old baseline: **272 collected tests**.
+- Edited candidate: **269 collected tests**; ordinary pytest exited **0**.
+- Local-only changed candidate SHA: `c6cc772eae3a494de6abf9d6595f5ef46e73231d`.
+- Original R2 status: **NOT_APPLICABLE**, exit 0 (false negative).
+- Corrected R2 status: **UNVERIFIED**, exit 3, with exact missing cases:
+  - `tests/test_a0_r2.py::test_old_ambiguous_r1_labels_are_invalid[ALLOW]`
+  - `tests/test_a0_r2.py::test_old_ambiguous_r1_labels_are_invalid[HALT]`
+  - `tests/test_a0_r2.py::test_old_ambiguous_r1_labels_are_invalid[STOP]`
+- AQG original gate result: PASS; companion result: AQG PASS / Sentinel UNVERIFIED / REVIEW_REQUIRED, warn-only.
+- Source checkout and all local test candidates remained clean. No deployment or live agent call.
 
-## Fix design
+## Second negative control: pytest.ini
 
-R2 already collects immutable before/after pytest inventories from isolated baseline and candidate checkouts. This patch computes the previous IDs absent from the candidate **only within changed `tests/**/test_*.py` files**, and records `previously_collected_cases_missing` separately from newly added IDs. A nonempty removed-case inventory results in `UNVERIFIED` (exit 3) unless an independent failure already exists. A legitimate rename can therefore be reviewed and approved without being incorrectly called a test failure.
+With the first changed-test-file-only repair, adding a `pytest.ini` containing
+`python_functions = test_still_runs` left one existing test runnable while
+suppressing three other, unchanged-file parametrized tests. The new targeted
+test **failed red**: expected UNVERIFIED but got NOT_APPLICABLE. The verifier
+was then narrowed in responsibility but expanded in coverage: it now compares
+**all baseline-vs-candidate collected node IDs**, not only IDs in changed test
+files, and records previously collected cases that are absent.
 
-The companion adapter rejects a forged `PASS` or `NOT_APPLICABLE` report with missing previously collected cases and exposes the precise ID inventory. Its status always remains **advisory**.
+After this change the same synthetic control **passed green**: exit 3 /
+UNVERIFIED, three missing exact IDs. This is a review advisory, not proof of
+misconduct or incorrect intent.
 
-## Controls and boundaries
+## Regression controls and known boundaries
 
-- The R2 experiment's existing synthetic 17-case suite and CS-ADDON-01's existing 4-case AQG comparison are regression baselines.
-- Added targeted synthetic controls: disappeared three-case parametrized test (UNVERIFIED), legitimate test rename (UNVERIFIED, not FAIL), and documentation-only change (NOT_APPLICABLE).
-- Adapter expanded from 12 to 16 unit tests for missing-case invariants and schema validation.
-- Re-run tests on unprivileged hosted Linux and Windows with pinned `pytest==9.0.2`; the real-project Gap Radar check was **Windows only**.
-- No enforcement claim: a programmatically generated pytest ID can be unstable; changes in `conftest.py` or custom collector configuration outside `test_*.py` may change collection in ways not captured by this narrow delta. The checker also does not judge assertion meaning or task quality.
-- No end-user adoption, QA effectiveness rate, false-positive rate, or commercial moat established.
+- Existing CS-GAP-02 R2 synthetic suite: **17/17 locally passed** before the
+  second full-inventory adjustment; hosted CI reruns the entire suite.
+- AQG/R2 adapter: **16/16 locally passed** with evidence schema protections.
+- ADDON02 synthetic controls: **4/4 passed locally** after the full-inventory fix:
+  vanished test methods, legitimate rename, documentation-only task and
+  pytest.ini-only collection change.
+- Prior CS-ADDON-01 integration four-case synthetic comparison:
+  **4/4 matched** after the fix.
+- Original real-project qualification was run on Windows only; research CI
+  qualifies *synthetic* cases on both Linux and Windows.
+- New detection does not prove assertion semantics, test necessity, intent or
+  task completion, and can be noisy if IDs are nondeterministic.
+- Test execution is **not isolated from network/OS side effects**. Never use
+  privileged `pull_request_target` or production secrets.
 
-## Next evidence threshold
-
-Keep testing as an optional add-on, maintain a **failure/false-positive register**, and only implement a further fix when a realistic, repeatable failure shows that it is needed. The next highest-value challenge is natural coding-agent maintenance changes where a reviewer did **not** predeclare exact required test IDs, especially parametrization changes and legitimate test renames. Compare maintenance and review effort with the smaller expected-ID CI alternative.
-
-**Decision: record and repair ADDON02-001; do not merge drafts or alter AQG upstream.**
+**Disposition:** retained draft-only. Continue testing as an independent,
+optional AQG companion with a failure register. Never turn an UNVERIFIED status
+into a silent PASS or block merges without separately qualified owner policy.
